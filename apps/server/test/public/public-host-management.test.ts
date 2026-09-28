@@ -1,3 +1,5 @@
+import { createBbSdk } from "@bb/sdk/core";
+import { createHttpTransport } from "@bb/sdk/node";
 import { spawnSync } from "node:child_process";
 import {
   getEnvironment,
@@ -64,6 +66,30 @@ function requestJoinCode(app: {
 }
 
 describe("public host management", () => {
+  it("reads machine paths after an offline session without requiring threads", async () => {
+    await withTestHarness(async (harness) => {
+      const host = seedHost(harness.deps, { id: "host_paths" });
+      const request = () =>
+        harness.app.request(`${API}/hosts/${host.id}/paths`);
+      expect((await request()).status).toBe(409);
+      const session = seedSession(harness.deps, host.id);
+      harness.hub.unregisterDaemon(session.id);
+      const sdk = createBbSdk({
+        transport: createHttpTransport({
+          baseUrl: "http://localhost",
+          runtime: "node",
+          fetch: async (input, init) =>
+            harness.app.fetch(new Request(input, init)),
+        }),
+      });
+      await expect(
+        sdk.hosts.experimental_paths({ hostId: host.id }),
+      ).resolves.toEqual({
+        threadStorageRootPath: "/tmp/bb-host-data/host_paths/thread-storage",
+      });
+    });
+  });
+
   it("reconnects a machine by re-enrolling it, replacing access only when the installer runs", async () => {
     await withTestHarness(async (harness) => {
       const host = seedHost(harness.deps, { id: "host_reconnect" });
@@ -122,7 +148,9 @@ describe("public host management", () => {
         hostId: string;
       };
       expect(prepared).toMatchObject({ hostId: host.id });
-      expect(prepared.command).toContain("https://relay.example.com/install.sh");
+      expect(prepared.command).toContain(
+        "https://relay.example.com/install.sh",
+      );
       expect(release).not.toHaveBeenCalled();
       const credentialOf = (command: string) =>
         /X-BB-Enrollment: ([^']+)/u.exec(command)?.[1] ?? "";
@@ -169,7 +197,9 @@ describe("public host management", () => {
         headers: { "X-BB-Enrollment": credential },
       });
       expect(reused.status).toBe(403);
-      expect(reused.headers.get("content-type")).toContain("text/x-shellscript");
+      expect(reused.headers.get("content-type")).toContain(
+        "text/x-shellscript",
+      );
       const errorScript = spawnSync("sh", ["-c", await reused.text()], {
         encoding: "utf8",
       });

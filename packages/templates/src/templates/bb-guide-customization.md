@@ -444,3 +444,8 @@ Downloads use `/install/bb-android.apk`; bb connect requires an account session.
 Publish the first release using **Mobile Android (EAS)** with profile `preview`
 and **publish** enabled. Local fallback APKs use the debug signing key, which may
 differ from the release key. See `docs/configuration.md` for setup and publishing.
+
+Storage & retention is a default-disabled bundled plugin. Enable it
+with `bb plugin enable storage-retention`.
+Its sidebar panel and `bb storage` commands own retention policies and machine
+cleanup. See the plugin’s storage-retention skill for commands and limitations.
