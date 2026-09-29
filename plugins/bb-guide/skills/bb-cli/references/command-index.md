@@ -83,6 +83,7 @@ This index lists every command path that the core CLI registers, including alias
 - `bb machine env unset`
 - `bb machine create`
 - `bb machine list`
+- `bb machine paths`
 - `bb machine show`
 - `bb machine reconnect`
 - `bb machine rename`
@@ -225,6 +226,7 @@ move and downloads the new server's bb-app package for its service.
 - `bb environment providers`
 - `bb environment list`
 - `bb environment delete`
+- `bb environment retry-cleanup`
 - `bb environment show`
 - `bb environment get`
 - `bb environment status`
