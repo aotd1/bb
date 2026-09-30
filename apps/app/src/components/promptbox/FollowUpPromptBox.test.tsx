@@ -1093,7 +1093,7 @@ describe("FollowUpPromptBox", () => {
     expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(
       "false",
     );
-    expect(screen.getByText("Local environment")).toBeTruthy();
+    expect(screen.queryByText("Local environment")).toBeNull();
 
     fireEvent.blur(input, { relatedTarget: submit });
     fireEvent.focus(submit);
@@ -1370,18 +1370,23 @@ describe("FollowUpPromptBox", () => {
   it("stays expanded after pressing a non-focusable composer control", () => {
     mocks.isCompactViewport = true;
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
-    props.environmentSummary = (
-      <button type="button" disabled>
-        Read only mode
-      </button>
-    );
-    render(<FollowUpPromptBox {...props} />);
+    props.permission = {
+      ...props.permission,
+      options: [
+        { value: "accept-edits", label: "Accept Edits" },
+        { value: "full", label: "Full Access" },
+      ],
+    };
+    props.permissionReadOnly = true;
+    const { container } = render(<FollowUpPromptBox {...props} />);
     const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
     act(() => input.focus());
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Read only mode" }),
+    const readOnlyControl = container.querySelector<HTMLButtonElement>(
+      "[data-follow-up-composer-footer] button:disabled",
     );
+    expect(readOnlyControl).not.toBeNull();
+    fireEvent.pointerDown(readOnlyControl!);
 
     expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(
       "false",
