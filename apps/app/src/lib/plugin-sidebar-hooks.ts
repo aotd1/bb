@@ -313,6 +313,10 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
           setRootComposeProjectId(projectId);
         }
         const state = {
+          placement: options?.experimental_placement ?? {
+            sectionId: options?.sectionId ?? null,
+            pinned: false,
+          },
           ...(options?.focusPrompt ? { focusPrompt: true } : {}),
           ...(options?.sectionId !== undefined
             ? { sectionId: options.sectionId }

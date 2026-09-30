@@ -104,8 +104,8 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
   all running work. `bb server export --out <file>` backs
   up a running server. `bb server import`, `unlock`, `allow-connect`, and
   `delete-old-copy` act on this computer's data directory without calling a
-  server. An imported server keeps its connect tunnel off until
-  `bb server allow-connect`. On the computer a server moved away from,
+  server. An imported server keeps its connect tunnel and bb account off
+  until `bb server allow-connect`. On the computer a server moved away from,
   `bb server install-machine-service` installs the persistent, self-updating
   machine service (needs Node.js 22.19+ on the PATH).
 - Use `bb machine suspend|resume <id-or-name>` only for providers that expose
@@ -170,6 +170,13 @@ Discover contributed command paths through `bb plugin list`, the generated
 Keep this skill and its references focused on core BB commands. Plugin-specific
 behavior belongs in the owning plugin’s `skills/` directory, including built-in
 plugins; do not add plugin command manuals here.
+
+## Native mobile builds
+
+For Android mobile builds and distribution, see `apps/mobile/README.md`.
+`GOOGLE_SERVICES_JSON` points to the optional Firebase Android config file;
+local builds fall back to `apps/mobile/google-services.json`. EAS uses a file
+environment variable. See `bb guide customization` for push controls.
 
 ## Built-in browser control
 
