@@ -2546,7 +2546,6 @@ function ThreadDetailViewInternal(
         composerEnvironmentChrome?.environmentCompactLabel
       }
       environmentHost={composerEnvironmentChrome?.environmentHost}
-      environmentMachineName={resolvedThreadEnvironmentHost?.name}
       environmentIcon={composerEnvironmentChrome?.environmentIcon}
       environmentLabel={composerEnvironmentChrome?.environmentLabel}
       environmentMachineProvider={

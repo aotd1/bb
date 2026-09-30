@@ -1,6 +1,7 @@
 import { type CSSProperties, type ReactNode, type UIEventHandler } from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 
 export function DetailRowIconLabel({
   icon,
@@ -11,7 +12,13 @@ export function DetailRowIconLabel({
 }) {
   return (
     <span className="flex items-center gap-1.5">
-      <Icon name={icon} className="size-3.5 shrink-0 text-muted-foreground" />
+      <Icon
+        name={icon}
+        className={cn(
+          "text-muted-foreground",
+          COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+        )}
+      />
       <span className="min-w-0 truncate">{children}</span>
     </span>
   );

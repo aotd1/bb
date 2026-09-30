@@ -398,34 +398,6 @@
     }
   }
 
-  @media (max-width: 767px) {
-    [data-new-thread-footer] [data-promptbox-full-label],
-    [data-new-thread-footer] [data-promptbox-hide-compact] {
-      display: none !important;
-    }
-
-    [data-new-thread-footer] [data-promptbox-compact-label] {
-      display: block;
-      flex: 1 1 auto;
-    }
-
-    [data-new-thread-environment-summary]
-      button:has([data-icon^="Git"])
-      span:not(:has([data-icon^="Git"])) {
-      display: none !important;
-    }
-
-    [data-new-thread-environment-summary] [data-promptbox-compact-label] {
-      color: var(--color-subtle-foreground);
-    }
-
-    [data-new-thread-environment-summary]
-      [data-promptbox-compact-label]
-      > span {
-      color: var(--color-muted-foreground);
-    }
-  }
-
   @container promptbox-shell (max-width: 34rem) {
     [data-promptbox-shell] [data-promptbox-full-label],
     [data-promptbox-shell] [data-promptbox-hide-compact] {
@@ -455,6 +427,28 @@
     [data-promptbox-shell] [data-promptbox-hide-branch-compact],
     [data-promptbox-shell] [data-promptbox-hide-tiny] {
       display: none !important;
+    }
+  }
+
+  @media (width < 48rem) {
+    [data-new-thread-footer] button {
+      min-block-size: 2.75rem;
+    }
+
+    [data-new-thread-footer]
+      [data-promptbox-shrinkable-control]:has(~ :not(:empty))
+      [data-promptbox-compact-label] {
+      display: none !important;
+    }
+
+    [data-new-thread-footer]
+      [data-promptbox-icon-only-control]
+      [data-promptbox-full-label] {
+      display: block !important;
+    }
+
+    [data-new-thread-footer] [data-promptbox-icon-only-control] {
+      flex-shrink: 1;
     }
   }
 }

@@ -432,7 +432,7 @@ export function EnvironmentPickerUI({
                   data-promptbox-compact-label=""
                   data-promptbox-hide-tiny=""
                 >
-                  <span>{selected.compactModeLabel}</span>
+                  {selected.compactModeLabel}
                 </span>
               </>
             )}

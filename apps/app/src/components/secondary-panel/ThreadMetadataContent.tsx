@@ -33,11 +33,13 @@ import {
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
 import { useHosts } from "@/hooks/queries/host-queries";
+import { useProjectDisplayName } from "@/hooks/queries/sidebar-navigation-query";
 import { MachineLabel } from "@/components/machines/MachineLabel";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { Button } from "@bb/shared-ui/button";
 import {
   COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { CopyableInlineLabel } from "@/components/ui/copy-button.js";
@@ -289,7 +291,10 @@ export function EnvironmentRow({
           <span className="flex items-center gap-1.5">
             <EnvironmentProviderIcon
               provider={providerLookup.provider}
-              className="size-3.5 shrink-0 text-muted-foreground"
+              className={cn(
+                "text-muted-foreground",
+                COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+              )}
             />
             <span className="min-w-0 truncate">Environment</span>
           </span>
@@ -347,6 +352,22 @@ export function EnvironmentRow({
   );
 }
 
+export function ProjectRow({ projectId }: { projectId: string }) {
+  const projectName = useProjectDisplayName(projectId);
+  if (!projectName) return null;
+
+  return (
+    <DetailRow
+      label={<DetailRowIconLabel icon="Folder">Project</DetailRowIconLabel>}
+      valueClassName="min-w-0"
+    >
+      <span className="block min-w-0 truncate" title={projectName}>
+        {projectName}
+      </span>
+    </DetailRow>
+  );
+}
+
 export function EnvironmentProvisioningFailureRow({
   failed,
 }: {
@@ -385,7 +406,9 @@ export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
 
   return (
     <DetailRow
-      label={<DetailRowIconLabel icon="Folder">Directory</DetailRowIconLabel>}
+      label={
+        <DetailRowIconLabel icon="FolderOpen">Directory</DetailRowIconLabel>
+      }
       valueClassName="min-w-0"
     >
       <CopyableInlineLabel
@@ -996,7 +1019,7 @@ export function ThreadMetadataCard({ children }: DetailCardWrapperProps) {
   return (
     <DetailCard
       appearance="flat"
-      className="transient-scrollbar min-h-0 flex-1 gap-1.5 overflow-x-hidden overflow-y-auto px-4 py-3"
+      className="transient-scrollbar min-h-0 flex-1 gap-1.5 overflow-x-hidden overflow-y-auto px-4 py-3 max-md:gap-0 max-md:py-1 max-md:[--detail-label-width:7.5rem] max-md:[&>div]:min-h-11 max-md:[&>div:not(.items-center)]:pt-3"
       onScroll={handleScroll}
     >
       {children}
@@ -1057,6 +1080,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         onRetryParentThreads={onRetryParentThreads}
       />
       <ForksRow thread={thread} projectId={projectId} />
+      <ProjectRow projectId={projectId} />
       <EnvironmentRow
         thread={thread}
         environment={environment}
