@@ -334,7 +334,7 @@ describe("EnvironmentRow", () => {
     expect(markup).toContain("Michael-M4");
   });
 
-  it("shows a personal environment with the project folder icon and machine", () => {
+  it("shows a personal environment under the environment icon with its machine", () => {
     const markup = renderEnvironmentRow(
       makeEnvironment({
         environmentProviderId: "personal-workspace",
@@ -345,7 +345,7 @@ describe("EnvironmentRow", () => {
 
     expect(markup).toContain(">Personal workspace<");
     expect(markup).toContain("Michael-M4");
-    expect(markup).toContain('data-icon="Folder"');
+    expect(markup).toContain('data-icon="Layers"');
   });
 
   it("shows the provider and machine without the custom environment name", () => {
