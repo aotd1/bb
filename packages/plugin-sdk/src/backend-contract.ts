@@ -2040,8 +2040,15 @@ export interface PluginStatusApi {
 export type PluginBbSdk = Omit<BbSdk, "threads"> & {
   threads: Omit<
     BbSdk["threads"],
-    "getPluginMetadata" | "updatePluginMetadata"
+    "getPluginMetadata" | "updatePluginMetadata" | "experimental_importHistory"
   > & {
+    /** Atomically create or append text history without starting a runtime. The owner is always this plugin. */
+    experimental_importHistory(
+      args: Omit<
+        import("@bb/sdk").ExperimentalImportHistoryRequest,
+        "pluginId"
+      >,
+    ): Promise<import("@bb/sdk").ExperimentalImportHistoryResponse>;
     getPluginMetadata(
       args: Omit<ThreadPluginMetadataArgs, "pluginId"> & { pluginId?: string },
     ): Promise<ThreadPluginMetadataResult>;

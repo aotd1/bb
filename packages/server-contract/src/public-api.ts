@@ -1,4 +1,10 @@
 import {
+  experimentalImportHistoryRequestSchema,
+  type ExperimentalImportHistoryRequest,
+  type ExperimentalImportHistoryResponse,
+} from "./api/external-history.js";
+import { androidAppPrepareRequestSchema } from "./api/system.js";
+import {
   machineEnvironmentSetSchema,
   machineEnvironmentDeleteSchema,
   type MachineEnvironmentSet,
@@ -1277,6 +1283,14 @@ export const publicApiRoutes = {
   },
 
   threads: {
+    experimental_importHistory: defineRoute({
+      path: "/threads/experimental-import-history",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalImportHistoryRequest>(
+        experimentalImportHistoryRequestSchema,
+      ),
+      response: jsonResponse<ExperimentalImportHistoryResponse>(),
+    }),
     list: defineRoute({
       path: "/threads",
       method: "get",

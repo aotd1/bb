@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
+import { events } from "../../src/schema.js";
 import {
   encodeClientTurnRequestIdNumber,
   threadScope,
@@ -11,6 +13,7 @@ import { createConnection } from "../../src/connection.js";
 import { noopNotifier } from "../../src/notifier.js";
 import {
   appendStoredThreadEvent,
+  copyStoredThreadEventsInTransaction,
   insertEvents,
 } from "../../src/data/events.js";
 import { upsertHost } from "../../src/data/hosts.js";
@@ -199,6 +202,73 @@ describe("thread search data", () => {
       expect(
         titleUpdateResults.active.results.map((result) => result.thread.id),
       ).toEqual([thread.id]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("indexes imported user history on append and copy without indexing legacy provider input", () => {
+    const { db, project } = setup();
+    try {
+      const source = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "external-history",
+        status: "idle",
+      });
+      for (const imported of [false, true]) {
+        appendStoredThreadEvent(db, noopNotifier, {
+          threadId: source.id,
+          type: "item/completed",
+          scope: turnScope("history-turn"),
+          providerThreadId: "source-session",
+          data: {
+            providerThreadId: "source-session",
+            item: {
+              type: "userMessage",
+              id: imported ? "imported-item" : "legacy-item",
+              content: [
+                {
+                  type: "text",
+                  text: imported ? "importedneedle" : "legacyneedle",
+                },
+              ],
+              ...(imported ? { experimental_externalHistory: true } : {}),
+            },
+          },
+        });
+      }
+      const target = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "external-history",
+        status: "idle",
+      });
+      const rows = db
+        .select()
+        .from(events)
+        .where(eq(events.threadId, source.id))
+        .orderBy(events.sequence)
+        .all();
+      db.transaction((tx) =>
+        copyStoredThreadEventsInTransaction(tx, {
+          rows,
+          targetEnvironmentId: null,
+          targetThreadId: target.id,
+        }),
+      );
+      expect(
+        searchThreadsWithPendingInteractionState(db, {
+          query: "importedneedle",
+          limitPerGroup: 20,
+        })
+          .active.results.map((result) => result.thread.id)
+          .sort(),
+      ).toEqual([source.id, target.id].sort());
+      expect(
+        searchThreadsWithPendingInteractionState(db, {
+          query: "legacyneedle",
+          limitPerGroup: 20,
+        }).active.total,
+      ).toBe(0);
     } finally {
       closeConnection(db);
     }

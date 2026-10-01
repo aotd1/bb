@@ -481,11 +481,15 @@ export function parseProviderUserMessage(
     ...(decoded.item.parentToolCallId
       ? { parentToolCallId: decoded.item.parentToolCallId }
       : {}),
-    initiator: "system",
+    initiator: decoded.item.experimental_externalHistory ? "user" : "system",
     senderThreadId: null,
     systemMessageKind: "unlabeled",
     systemMessageSubject: null,
-    turnRequest: { isGrouped: false, kind: "steer", status: "accepted" },
+    turnRequest: {
+      isGrouped: false,
+      kind: decoded.item.experimental_externalHistory ? "message" : "steer",
+      status: "accepted",
+    },
     text,
     mentions: [],
   };

@@ -771,6 +771,60 @@ export const threadDynamicContextFileStates = sqliteTable(
   ],
 );
 
+export const externalThreadBindings = sqliteTable(
+  "external_thread_bindings",
+  {
+    threadId: text("thread_id")
+      .primaryKey()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    pluginId: text("plugin_id").notNull(),
+    sourceId: text("source_id").notNull(),
+    conversationId: text("conversation_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    sessionId: text("session_id").notNull(),
+    generation: integer("generation").notNull(),
+    lastOrder: integer("last_order"),
+  },
+  (table) => [
+    uniqueIndex("external_thread_bindings_identity_idx").on(
+      table.projectId,
+      table.pluginId,
+      table.sourceId,
+      table.conversationId,
+    ),
+  ],
+);
+
+export const externalThreadMessages = sqliteTable(
+  "external_thread_messages",
+  {
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => externalThreadBindings.threadId, {
+        onDelete: "cascade",
+      }),
+    generation: integer("generation").notNull(),
+    externalId: text("external_id").notNull(),
+    sourceOrder: integer("source_order").notNull(),
+    digest: text("digest").notNull(),
+    sessionId: text("session_id").notNull(),
+    sourceSequence: integer("source_sequence").notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.threadId, table.generation, table.externalId],
+    }),
+    uniqueIndex("external_thread_messages_order_idx").on(
+      table.threadId,
+      table.generation,
+      table.sourceOrder,
+    ),
+  ],
+);
+
 export const events = sqliteTable(
   "events",
   {

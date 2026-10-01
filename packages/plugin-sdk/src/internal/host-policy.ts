@@ -1332,6 +1332,10 @@ export function validatePluginProviderDeclaration(
     throw new Error("provider declaration must be an object");
   }
   const id = declaration.id;
+  if (id === "external-history")
+    throw new Error(
+      "external-history is reserved for passive imported threads",
+    );
   if (typeof id !== "string" || !PROVIDER_ID_PATTERN.test(id)) {
     throw new Error(
       `invalid provider id ${JSON.stringify(id)} — use 2-64 lowercase letters, digits, and "-", starting with a letter or digit`,
@@ -2392,9 +2396,7 @@ export interface NormalizedPluginEnvironmentProvider {
     PluginEnvironmentProviderDeclaration["experimental_existingPath"]
   > | null;
   create: PluginEnvironmentProviderDeclaration["create"];
-  restore: NonNullable<
-    PluginEnvironmentProviderDeclaration["restore"]
-  > | null;
+  restore: NonNullable<PluginEnvironmentProviderDeclaration["restore"]> | null;
   remove: PluginEnvironmentProviderDeclaration["remove"];
   policy: import("../environment-provider.js").PluginEnvironmentProviderPolicy;
 }

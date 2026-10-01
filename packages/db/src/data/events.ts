@@ -272,6 +272,7 @@ export type AppendStoredThreadEventArgs<
   TType extends ThreadEventType = ThreadEventType,
 > = {
   [TEventType in TType]: {
+    createdAt?: number;
     data: StoredThreadEventDataForType<TEventType>;
     environmentId?: string | null;
     providerThreadId?: string | null;
@@ -637,6 +638,19 @@ function listThreadSearchSegmentsForStoredEventArgs(args: {
         text: extractVisiblePromptText(args.eventArgs.data.input),
       });
     case "item/completed":
+      if (
+        args.eventArgs.data.item.type === "userMessage" &&
+        args.eventArgs.data.item.experimental_externalHistory
+      ) {
+        return buildThreadEventSearchSegment({
+          threadId: args.eventArgs.threadId,
+          sequence: args.sequence,
+          sourceKind: "user_message",
+          text: args.eventArgs.data.item.content
+            .flatMap((part) => (part.type === "text" ? [part.text] : []))
+            .join(""),
+        });
+      }
       if (args.eventArgs.data.item.type !== "agentMessage") {
         return [];
       }
@@ -667,7 +681,11 @@ function canProduceThreadSearchSegments(args: {
     case "system/manager/user_message":
       return true;
     case "item/completed":
-      return args.itemKind === "agentMessage" || args.itemKind === null;
+      return (
+        args.itemKind === "agentMessage" ||
+        args.itemKind === "userMessage" ||
+        args.itemKind === null
+      );
     default:
       return false;
   }
@@ -686,6 +704,19 @@ function listThreadSearchSegmentsForThreadEvent(args: {
         text: extractVisiblePromptText(args.event.input),
       });
     case "item/completed":
+      if (
+        args.event.item.type === "userMessage" &&
+        args.event.item.experimental_externalHistory
+      ) {
+        return buildThreadEventSearchSegment({
+          threadId: args.event.threadId,
+          sequence: args.sequence,
+          sourceKind: "user_message",
+          text: args.event.item.content
+            .flatMap((part) => (part.type === "text" ? [part.text] : []))
+            .join(""),
+        });
+      }
       if (args.event.item.type !== "agentMessage") {
         return [];
       }
@@ -980,7 +1011,7 @@ export function appendStoredThreadEventsInTransaction(
     insertStoredEventRow(db, {
       attachmentOwnership: "required",
       conflict: "error",
-      createdAt: now,
+      createdAt: args.createdAt ?? now,
       data: JSON.stringify(args.data),
       environmentId: args.environmentId ?? null,
       itemId: itemFields.itemId,

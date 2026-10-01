@@ -186,6 +186,12 @@ export function ensureThreadIsWritable(
   thread: Thread,
   allowStopping = false,
 ): void {
+  if (thread.providerId === "external-history")
+    throw new ApiError(
+      409,
+      "external_history_read_only",
+      "External history threads cannot run turns",
+    );
   if (thread.archivedAt) {
     throwThreadNotWritable(thread, "archived", "Thread is archived");
   }

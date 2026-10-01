@@ -10,6 +10,8 @@ export const JSON_SHAPE_BY_COMMAND_PATH: Readonly<Record<string, string>> = {
   "thread output": "{output}",
   "thread spawn":
     "the created thread: {id, status, title, projectId, environmentId, ...}",
+  "thread import-history":
+    "{threadId, created, inserted, skipped, generation, lastOrder}",
   "thread wait": "{threadId, matched: true, target}",
   "thread search": "{active: {total, results}, archived: {total, results}}",
   "prompt-history list":

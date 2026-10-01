@@ -380,6 +380,7 @@ export const threadEventItemSchema = z.discriminatedUnion("type", [
       type: z.literal("userMessage"),
       id: z.string(),
       content: z.array(threadEventUserContentSchema),
+      experimental_externalHistory: z.literal(true).optional(),
       clientRequestId: clientTurnRequestIdSchema.optional(),
       parentToolCallId: z.string().optional(),
     })

@@ -972,6 +972,12 @@ export function settleTurnSubmitCommandResult(
 }
 
 export function ensureThreadCanStartRequest(thread: Thread): void {
+  if (thread.providerId === "external-history")
+    throw new ApiError(
+      409,
+      "external_history_read_only",
+      "External history threads cannot run turns",
+    );
   if (isPreStartThreadStatus(thread.status)) {
     throwThreadNotWritable(
       thread,

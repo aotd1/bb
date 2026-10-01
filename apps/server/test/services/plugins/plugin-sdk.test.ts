@@ -544,6 +544,74 @@ describe("plugin bb.sdk bind gate", () => {
 });
 
 describe("plugin bb.sdk against a running server", () => {
+  it("imports passive history with the owning plugin identity and isolates conversation bindings", async () => {
+    const server = await startTestServer();
+    const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-history-live-"));
+    try {
+      const { host } = seedHostSession(server.deps);
+      const { project } = seedProjectWithSource(server.deps, {
+        hostId: host.id,
+      });
+      server.pluginService.bindSdk({ baseUrl: server.baseUrl });
+      const batch = {
+        projectId: project.id,
+        pluginId: "spoofed-owner",
+        sourceId: "gateway",
+        conversationId: "topic",
+        providerId: "openclaw",
+        sessionId: "session",
+        generation: 0,
+        initialPluginMetadata: { agentId: "dooffin" },
+        messages: [
+          {
+            id: "1",
+            order: 0,
+            role: "user" as const,
+            text: "hello",
+            createdAt: 1000,
+          },
+        ],
+      };
+      const ids = [];
+      for (const pluginId of ["history-alpha", "history-beta"]) {
+        const rootDir = await writePlugin(workDir, {
+          name: `bb-plugin-${pluginId}`,
+          serverSource: "export default function plugin() {}",
+        });
+        await server.pluginService.installPath(rootDir);
+        const api = requireApi(server.pluginService, pluginId);
+        const result = await api.sdk.threads.experimental_importHistory(batch);
+        ids.push(result.threadId);
+        expect(getThread(server.db, result.threadId)).toMatchObject({
+          originPluginId: pluginId,
+          providerId: "external-history",
+          environmentId: null,
+        });
+        await expect(
+          api.sdk.threads.getPluginMetadata({ threadId: result.threadId }),
+        ).resolves.toEqual({ agentId: "dooffin" });
+        await expect(
+          api.sdk.threads.getPluginMetadata({
+            threadId: result.threadId,
+            pluginId: "spoofed-owner",
+          }),
+        ).resolves.toEqual({});
+        await expect(
+          api.sdk.threads.experimental_importHistory(batch),
+        ).resolves.toMatchObject({
+          threadId: result.threadId,
+          inserted: 0,
+          skipped: 1,
+        });
+      }
+      expect(new Set(ids).size).toBe(2);
+    } finally {
+      await server.pluginService.stop();
+      await rm(workDir, { recursive: true, force: true });
+      await server.close();
+    }
+  });
+
   it("returns the server-side Standard Schema output after the host JSON wire", async () => {
     const server = await startTestServer();
     const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-host-transform-"));

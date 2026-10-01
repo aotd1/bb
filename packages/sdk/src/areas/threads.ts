@@ -1,3 +1,11 @@
+import type {
+  ExperimentalImportHistoryRequest,
+  ExperimentalImportHistoryResponse,
+} from "@bb/server-contract";
+export type {
+  ExperimentalImportHistoryRequest,
+  ExperimentalImportHistoryResponse,
+} from "@bb/server-contract";
 import {
   parseThreadEventRow,
   type PromptInput,
@@ -547,6 +555,9 @@ export interface ThreadQueueArea {
 }
 
 export interface ThreadsArea {
+  experimental_importHistory(
+    input: ExperimentalImportHistoryRequest,
+  ): Promise<ExperimentalImportHistoryResponse>;
   archive(args: ThreadActionArgs): Promise<ThreadArchiveResult>;
   archiveAll(args: ThreadActionArgs): Promise<ThreadArchiveAllResult>;
   childSummary(args: ThreadStatusArgs): Promise<ThreadChildSummaryResult>;
@@ -1097,6 +1108,13 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     },
   };
   return {
+    async experimental_importHistory(input) {
+      return transport.readJson(
+        transport.api.v1.threads["experimental-import-history"].$post({
+          json: input,
+        }),
+      );
+    },
     archive: archiveAll,
     archiveAll,
     async childSummary(input) {

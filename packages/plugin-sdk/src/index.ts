@@ -21,4 +21,8 @@ export type {
   ExperimentalDesktopBrowserAcquireInput,
 } from "@bb/sdk";
 
+export type {
+  ExperimentalImportHistoryRequest,
+  ExperimentalImportHistoryResponse,
+} from "@bb/sdk";
 export type * from "./machine-bootstrap.js";
