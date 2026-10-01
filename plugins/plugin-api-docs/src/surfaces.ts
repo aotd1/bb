@@ -761,6 +761,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         surfaceIds: [
           "storage",
           "bb-sdk",
+          "external-thread-history",
           "thread-plugin-metadata",
           "desktop-browsers",
           "ai-services",
@@ -1214,6 +1215,30 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Side chat",
           "Tasks",
           "Workflows",
+        ],
+      },
+      {
+        id: "external-thread-history",
+        tagline: "Mirror external conversations without running a model",
+        title: "External thread history",
+        experimental: true,
+        summary:
+          "Imports finalized text through bb.sdk.threads.experimental_importHistory into passive ordinary threads. With this, a plugin can:",
+        bullets: [
+          "Create one idle thread per project/plugin/source/conversation identity with initialTitle and initialPluginMetadata; repeated calls resolve the same binding without replacing local edits",
+          "Preserve external provider/session IDs independently of BB execution; threads use reserved external-history with no environment, outbound request, or model launch",
+          "Append up to 500 user/assistant text messages and 1 MiB JSON per atomic batch with stable IDs, increasing safe-integer order and original Unix millisecond timestamps",
+          "Retry exact messages without duplicate events or unread changes; edits, backfill before the cursor, another thread binding, and active/archived threads fail with 409",
+          "Increase generation on a source session reset, preserving old history and allowing new message IDs/order; stale generations fail, and compaction/truncation never deletes history",
+          "Use attention preserve for backfill or unread for committed live updates; timeline, search, read-state and realtime use core projections after commit",
+          "Reject attachments, tool/system roles, streaming updates and raw event injection; this version supports finalized text only",
+          "Recover the current threadId, generation and lastOrder with an empty batch; use POST /api/v1/threads/experimental-import-history or bb thread import-history --file batch.json --json outside a plugin",
+        ],
+        apiSymbols: [
+          "PluginBbSdk.threads.experimental_importHistory",
+          "ThreadsArea.experimental_importHistory",
+          "ExperimentalImportHistoryRequest",
+          "ExperimentalImportHistoryResponse",
         ],
       },
       {

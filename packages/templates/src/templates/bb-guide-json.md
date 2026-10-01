@@ -55,6 +55,9 @@ Fields beyond those shown exist; these are the ones scripts use.
   bb thread tell <id> ... --json
     {threadId, ...delivery outcome}
 
+  bb thread import-history --file batch.json --json
+    {threadId, created, inserted, skipped, generation, lastOrder}
+
   bb thread wait <id> --json
     {threadId, matched: true, target}
 

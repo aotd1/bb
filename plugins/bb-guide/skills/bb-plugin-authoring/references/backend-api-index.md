@@ -128,6 +128,9 @@ Read the installed declarations for exact current signatures.
 - `PluginAppSetup`
 - `PluginAppSlots`
 - `PluginBackground`
+- `ExperimentalImportHistoryRequest` — general SDK/HTTP import batch; plugin SDK binds the owner ID
+- `ExperimentalImportHistoryResponse` — thread identity, replay counts, and import cursor
+- `PluginBbSdk.threads.experimental_importHistory` — atomic passive text history; see the External thread history Plugin Guide card
 - `PluginBbSdk` — `bb.sdk`; thread plugin metadata calls default `pluginId`
   (see backend-sdk.md)
 - `PluginCli`

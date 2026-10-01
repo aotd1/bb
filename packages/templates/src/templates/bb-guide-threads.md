@@ -9,6 +9,22 @@ Thread commands
 
 Every command supports --json for machine-readable output.
 
+Importing external history (experimental):
+
+  bb thread import-history --file <batch.json|-> [--json]
+
+    Reads the same JSON batch as POST /api/v1/threads/experimental-import-history:
+    projectId, pluginId, sourceId, conversationId, providerId, sessionId,
+    generation, messages [{id, order, role: user|assistant, text, createdAt}],
+    optional threadId assertion, initialTitle, initialPluginMetadata,
+    and attention (preserve by default, or unread).
+    Creates/resolves a passive external-history thread without an environment or model.
+    Exact repeats skip; changes to imported IDs and backfill before the cursor fail.
+    Increase generation on source reset; old history stays. Max 500 messages/1 MiB
+    per atomic batch. Text only; attachments, tools and streaming are unsupported.
+    JSON result: {threadId, created, inserted, skipped, generation, lastOrder}.
+    See the External thread history Plugin Guide card for the SDK contract.
+
 Spawning:
 
   bb thread spawn --project <id> --prompt "..." [options]

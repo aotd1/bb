@@ -3665,21 +3665,112 @@ this placement with normal and scheduled creation. Audit pinned groups, custom s
 route transitions, draft recovery, and third-party sidebar compatibility
 before stabilizing this option.
 
-### Provider discovery metadata
 
-`package.json` → `bb.experimental_providers` statically declares
-`{ kind, id, displayName }` provider identities before a plugin runs. `kind`
-uses the `providerKind` vocabulary and currently accepts only `"agent"`, which
-feeds Settings → Providers so disabled plugins' agents stay discoverable. It does
-not grant runtime capabilities or execute code. Core also retains the last
-registered agent identities when disabling a plugin, preserving custom providers
-across restart. Add `"environment"` or `"machine"` only together with a consumer.
-Stabilize after validating first-install discovery, shared-plugin enablement,
-dynamic provider removal, plugin upgrades, and duplicate-ID ownership behavior
-with third-party providers.
+## `bb.sdk.threads.experimental_importHistory`
 
-## Global prompt history (`bb.sdk.experimental_promptHistory`)
+Creates or continues a passive ordinary thread. The plugin-bound SDK always
+uses its owning `pluginId`; the general SDK and CLI require it explicitly.
+The public route is `POST /api/v1/threads/experimental-import-history`, behind
+the ordinary public API origin/access checks and public project/thread lookup.
+It accepts no SQL, event envelopes, runtime options, host, or filesystem paths.
 
-`bb.sdk.experimental_promptHistory.list({ cursor?, limit?, signal? })` returns `{ entries, nextCursor }`: every accepted user prompt across projects and threads, newest first, each with `id`, `createdAt`, `input`, `projectId`, and `threadId`. `limit` is a digit string, defaulting to 100 and capped at 1000. `nextCursor` is an opaque string, or null on the last page. A page can hold fewer than `limit` entries while `nextCursor` is set, because stored rows whose input no longer parses are skipped. Prompts from a deleted thread remain listed until the thread row is removed, which cascades to its prompt history. The same route backs `bb prompt-history list`.
+The durable binding key is `(projectId, pluginId, sourceId, conversationId)`.
+`providerId` is the external provider identity, not a BB execution provider.
+BB uses the reserved `external-history` execution provider, an idle status,
+and no environment. An optional `threadId` asserts an existing binding; this
+API cannot claim a pre-existing ordinary thread. Soft-deleted threads are refused; permanent deletion/purging releases
+the binding with its thread. Connectors must honor user deletions rather than
+continually recreating removed conversations.
+`initialTitle` and `initialPluginMetadata` are creation seeds only. Replays do
+not overwrite local edits; later title and metadata changes use the existing
+thread update/metadata APIs. Metadata is owned by the importing plugin and is
+not injected into any model. The source/session identities live in the core
+binding and message records, separate from runtime `thread/identity` handles.
 
-Before stabilization, audit whether `limit` should be a number, whether the cursor format needs versioning, whether project or thread filters belong on this call rather than on `projects.promptHistory` and `threads.promptHistory`, and whether skipped rows should fill the page.
+Messages are `{ id, order, role: "user" | "assistant", text, createdAt }`.
+`order` is a nonnegative safe integer chosen by the connector and strictly
+increases in each batch. The canonical timeline follows order, even when
+source timestamps are equal or decrease. `createdAt` is integer Unix
+milliseconds (0 through the JavaScript date limit), retained on each message's
+canonical events. IDs are nonempty strings scoped to a thread and generation.
+Source IDs/conversation IDs/session IDs/message IDs are limited to 512
+characters. Each nonempty text is at most 128,000 characters; whitespace is
+allowed. Only finalized text messages are supported. Tools, system roles,
+reasoning, streaming patches, attachment IDs/URLs/paths, and arbitrary raw
+provider events are rejected. This version does not acquire attachment
+ownership because it accepts no attachments. Upload/attachment mapping is a
+separate future contract; do not encode an attachment path as an accepted
+attachment reference.
+
+Exact repeats compare order, role, text, original time, and session identity,
+then return `skipped` without events, changes to attention, or realtime
+notifications. Existing messages are immutable. A changed ID payload, a
+new message at/before the saved cursor, provider identity changes, attempts to
+bind another thread, or an active/non-passive/archived thread produce HTTP 409
+`external_history_conflict`. Batches may overlap old exact repeats followed
+by new messages. No insert, edit, delete, or reorder behind the cursor is
+supported. Fetch initial history oldest-first. If a connector discovers older
+history later, report the gap rather than fabricate completeness or overwrite
+history. A current empty batch returns the binding and cursor without running
+anything. SDK/CLI results are `{ threadId, created, inserted, skipped,
+generation, lastOrder }`.
+
+`generation` is a connector-chosen nonnegative safe integer. It may increase
+when a source resets/replaces its session; a replacement `sessionId` requires
+an increase. Increasing generation keeps the same BB thread, preserves every
+older canonical event and dedupe record, and resets the order cursor. IDs and
+order may be reused in the new generation. Requests from a previous generation
+fail with 409, including old retries. An empty batch can commit a new
+generation before its first message. Compaction or a truncated `chat.history`
+window alone is not a reset and must not change the generation, erase older
+messages, or reuse IDs. Source sequence assignment, stable ID recovery, and
+generation detection belong to the connector.
+
+`attention` defaults to `preserve`: append updates activity time but keeps both
+read markers intact, suitable for initial backfill. `unread` advances attention
+using server arrival time and marks the thread unread with the existing
+`lastReadAt: null` policy, suitable
+for new finalized live input/output, even when original time is old. Repeated
+batches do not mark a thread unread again. No lifecycle `turn.completed` hook
+or push notification is fabricated for a model that never ran. The ordinary `thread.created` plugin announcement runs after creation commits.
+The core realtime notifier announces committed thread creation/events/read-state and
+project thread-list changes; event subscriptions and timeline/search consume
+the same canonical projection path.
+
+Each batch is one SQLite immediate transaction, including creation, binding,
+deduplication/cursor, canonical events, search segments, metadata seed, and
+attention. Notifications happen only after commit. Maximum 500 messages and
+1 MiB UTF-8 JSON per request (including metadata); metadata is also limited to
+256 KiB. HTTP body admission returns 413; schema/shape/semantic batch
+validation returns 400 `invalid_request`. Larger history uses several batches;
+atomicity does not span requests. The database unique constraints and writer
+transaction serialize competing connectors. Exact repetitions within one
+batch are rejected as duplicate IDs, rather than counted as replays.
+
+Every message is represented as a server-minted, already completed timeline
+turn with one completed `userMessage` or `agentMessage`. It is an archival
+container, not a BB runtime turn or outbound request. The user item carries
+`experimental_externalHistory: true`, which projects it as user conversation
+rather than provider-internal system work. This additive stored-event marker
+is created/read on the server only; bridges are not required to emit it, and
+old events without it retain their previous projection. Older host daemons
+remain compatible because this API never sends imported items through the
+server/daemon wire. No provider-bridge methods, capabilities, grammar version,
+or session semantics change.
+
+Sending/queueing turns is rejected with `external_history_read_only`. Other
+runtime actions require a real provider/environment and cannot attach one
+through this API. Import refuses both an active status and an unfinished
+stored canonical turn, including a corrupted idle thread with active events.
+This version has no promotion to an interactive bridge session. Future replies
+require a separately audited binding/promotion contract and user authorization;
+passive live updates already use this API repeatedly.
+
+Before stabilization: audit connector reset/identity semantics, large-history
+pagination/backfill needs, retention/deletion of dedupe records, message edits,
+attachment ownership, user-role rendering and search rebuild, source identity
+read/discovery APIs, caller attribution, and safe promotion to provider-backed
+threads. Prove connectors neither dispatch a runtime nor infer missing external
+history from a truncated source. Exercise the published conformance kit if a
+future bridge contract is extended; history import does not replace bridge
+conformance.
