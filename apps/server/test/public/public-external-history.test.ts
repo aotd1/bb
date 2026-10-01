@@ -13,6 +13,8 @@ import {
   noopNotifier,
   projects,
   searchThreadsWithPendingInteractionState,
+  threadPluginMetadata,
+  threadSearchSegments,
   threads,
 } from "@bb/db";
 import { createNodeBbSdk } from "@bb/sdk/node";
@@ -315,6 +317,113 @@ describe("external history import", () => {
     }
   });
 
+  it.each([false, true])(
+    "rolls back a database failure after event writes (existing binding: %s)",
+    (existingBinding) => {
+      const store = memoryStore();
+      try {
+        if (existingBinding)
+          importExternalHistory(store, {
+            ...store.batch,
+            messages: [store.batch.messages[0]!],
+          });
+        const snapshot = () => ({
+          threads: store.db.select().from(threads).all(),
+          bindings: store.db.select().from(externalThreadBindings).all(),
+          messages: store.db.select().from(externalThreadMessages).all(),
+          events: store.db.select().from(events).all(),
+          search: store.db.select().from(threadSearchSegments).all(),
+          metadata: store.db.select().from(threadPluginMetadata).all(),
+        });
+        const before = snapshot();
+        store.hub.notifyThread.mockClear();
+        store.hub.notifyProject.mockClear();
+        store.db.$client.exec(`
+          CREATE TEMP TRIGGER fail_import_message
+          BEFORE INSERT ON external_thread_messages
+          WHEN NEW.external_id = 'm2'
+          BEGIN SELECT RAISE(ABORT, 'injected import failure'); END;
+        `);
+        expect(() =>
+          importExternalHistory(store, {
+            ...store.batch,
+            attention: "unread",
+          }),
+        ).toThrow("injected import failure");
+        expect(snapshot()).toEqual(before);
+        expect(store.hub.notifyThread).not.toHaveBeenCalled();
+        expect(store.hub.notifyProject).not.toHaveBeenCalled();
+        expect(
+          searchThreadsWithPendingInteractionState(store.db, {
+            query: "assistantsearchterm",
+            limitPerGroup: 10,
+          }).active.total,
+        ).toBe(0);
+        store.db.$client.exec("DROP TRIGGER fail_import_message");
+        expect(importExternalHistory(store, store.batch)).toMatchObject({
+          created: !existingBinding,
+          inserted: existingBinding ? 1 : 2,
+          skipped: existingBinding ? 1 : 0,
+          lastOrder: 20,
+        });
+      } finally {
+        store.close();
+      }
+    },
+  );
+
+  it("keeps plugin/source namespaces independent and resumes an empty reset without rewriting seeds", () => {
+    const store = memoryStore();
+    try {
+      const first = importExternalHistory(store, store.batch);
+      const otherPlugin = importExternalHistory(store, {
+        ...store.batch,
+        pluginId: "another-sync",
+      });
+      const otherSource = importExternalHistory(store, {
+        ...store.batch,
+        sourceId: "gateway-b",
+      });
+      expect(
+        new Set([first.threadId, otherPlugin.threadId, otherSource.threadId])
+          .size,
+      ).toBe(3);
+      expect(
+        importExternalHistory(store, {
+          ...store.batch,
+          generation: 1,
+          sessionId: "session-b",
+          initialTitle: "Changed seed",
+          initialPluginMetadata: { agentId: "changed" },
+          messages: [],
+        }),
+      ).toMatchObject({
+        threadId: first.threadId,
+        generation: 1,
+        lastOrder: null,
+        inserted: 0,
+      });
+      expect(getThread(store.db, first.threadId)?.title).toBe("Dooffin");
+      expect(
+        getThreadPluginMetadata(store.db, first.threadId, "dooffin-sync")
+          .metadata,
+      ).toEqual({ agentId: "dooffin" });
+      expect(
+        importExternalHistory(store, {
+          ...store.batch,
+          generation: 1,
+          sessionId: "session-b",
+        }),
+      ).toMatchObject({ threadId: first.threadId, inserted: 2, skipped: 0 });
+      expect(
+        importExternalHistory(store, { ...store.batch, sourceId: "gateway-b" }),
+      ).toMatchObject({ inserted: 0, skipped: 2, generation: 0 });
+      expect(store.db.select().from(events).all()).toHaveLength(24);
+    } finally {
+      store.close();
+    }
+  });
+
   it("cannot bind ordinary threads, bypass origin checks, import attachments, or start a model through SDK/HTTP", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
@@ -339,6 +448,10 @@ describe("external history import", () => {
           .filter((row) => row.kind === "conversation")
           .map((row) => row.createdAt),
       ).toEqual([2000, 1000]);
+      const waiter = harness.hub.registerThreadEventWaiter(
+        result.threadId,
+        5_000,
+      );
       const continued = await sdk.threads.experimental_importHistory({
         ...batch,
         messages: [
@@ -357,6 +470,7 @@ describe("external history import", () => {
         inserted: 1,
         lastOrder: 30,
       });
+      expect(await waiter.promise).toBe(true);
       expect(
         await sdk.threads.timeline({ threadId: result.threadId }),
       ).toMatchObject({ maxSeq: 9 });
@@ -422,6 +536,21 @@ describe("external history import", () => {
         },
       );
       expect(send.status).toBe(409);
+      expect(await send.json()).toMatchObject({
+        code: "external_history_read_only",
+      });
+      const queue = await harness.app.request(
+        `/api/v1/threads/${result.threadId}/queued-messages`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ input: [{ type: "text", text: "queue" }] }),
+        },
+      );
+      expect(queue.status).toBe(409);
+      expect(await queue.json()).toMatchObject({
+        code: "external_history_read_only",
+      });
       expect(
         listQueuedThreadCommands(harness, "thread.start", result.threadId),
       ).toHaveLength(0);
