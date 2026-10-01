@@ -402,7 +402,30 @@ type PersistentDrawerStack = {
   handleKeyDown: (event: KeyboardEvent) => void;
 };
 
-const persistentDrawerStacks = new WeakMap<Document, PersistentDrawerStack>();
+const PERSISTENT_DRAWER_STACK_KEY = Symbol.for("bb.persistent-drawer-stack.v1");
+
+function isPersistentDrawerStack(
+  value: unknown,
+): value is PersistentDrawerStack {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "entries" in value &&
+    Array.isArray(value.entries) &&
+    "handleKeyDown" in value &&
+    typeof value.handleKeyDown === "function"
+  );
+}
+
+function readPersistentDrawerStack(
+  ownerDocument: Document,
+): PersistentDrawerStack | undefined {
+  const stack: unknown = Reflect.get(
+    ownerDocument,
+    PERSISTENT_DRAWER_STACK_KEY,
+  );
+  return isPersistentDrawerStack(stack) ? stack : undefined;
+}
 
 function getDrawerFocusableElements(panel: HTMLElement): HTMLElement[] {
   return Array.from(
@@ -472,7 +495,7 @@ function registerOpenDrawer(
   ownerDocument: Document,
   entry: PersistentDrawerStackEntry,
 ): () => void {
-  let stack = persistentDrawerStacks.get(ownerDocument);
+  let stack = readPersistentDrawerStack(ownerDocument);
   if (stack === undefined) {
     const entries: PersistentDrawerStackEntry[] = [];
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -492,13 +515,13 @@ function registerOpenDrawer(
       }
     };
     stack = { entries, handleKeyDown };
-    persistentDrawerStacks.set(ownerDocument, stack);
+    Reflect.set(ownerDocument, PERSISTENT_DRAWER_STACK_KEY, stack);
     ownerDocument.addEventListener("keydown", handleKeyDown);
   }
   stack.entries.push(entry);
 
   return () => {
-    const currentStack = persistentDrawerStacks.get(ownerDocument);
+    const currentStack = readPersistentDrawerStack(ownerDocument);
     if (currentStack === undefined) {
       return;
     }
@@ -508,7 +531,7 @@ function registerOpenDrawer(
     }
     if (currentStack.entries.length === 0) {
       ownerDocument.removeEventListener("keydown", currentStack.handleKeyDown);
-      persistentDrawerStacks.delete(ownerDocument);
+      Reflect.deleteProperty(ownerDocument, PERSISTENT_DRAWER_STACK_KEY);
     }
   };
 }

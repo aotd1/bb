@@ -479,6 +479,60 @@ describe("PersistentResponsiveDrawerShell", () => {
     expect(screen.getByTestId("parent-state").textContent).toBe("false");
   });
 
+  it("closes the top drawer first when it comes from a separately bundled copy", async () => {
+    mockPointerCoarse(true);
+    vi.resetModules();
+    const pluginCopy = await import("@bb/shared-ui/responsive-overlay");
+    const PluginDrawerShell = pluginCopy.PersistentResponsiveDrawerShell;
+    expect(PluginDrawerShell).not.toBe(PersistentResponsiveDrawerShell);
+
+    function HostShelfWithPluginDialog() {
+      const [shelfOpen, setShelfOpen] = useState(true);
+      const [dialogOpen, setDialogOpen] = useState(false);
+      return (
+        <>
+          <output data-testid="shelf-state">{String(shelfOpen)}</output>
+          <output data-testid="dialog-state">{String(dialogOpen)}</output>
+          <PersistentResponsiveDrawerShell
+            open={shelfOpen}
+            onOpenChange={setShelfOpen}
+            srLabel="Right panel"
+          >
+            <button type="button" onClick={() => setDialogOpen(true)}>
+              New project
+            </button>
+            <PluginDrawerShell
+              open={dialogOpen}
+              onOpenChange={setDialogOpen}
+              srLabel="New project"
+            >
+              <input aria-label="Project name" />
+            </PluginDrawerShell>
+          </PersistentResponsiveDrawerShell>
+        </>
+      );
+    }
+
+    render(<HostShelfWithPluginDialog />);
+    fireEvent.click(screen.getByRole("button", { name: "New project" }));
+    const pluginDialog = screen.getByRole("dialog", { name: "New project" });
+    const name = screen.getByRole("textbox", { name: "Project name" });
+    name.focus();
+
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Tab" });
+    expect(pluginDialog.contains(document.activeElement)).toBe(true);
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
+    expect(screen.getByTestId("dialog-state").textContent).toBe("false");
+    expect(screen.getByTestId("shelf-state").textContent).toBe("true");
+
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
+    expect(screen.getByTestId("shelf-state").textContent).toBe("false");
+  });
+
   it("traps focus on coarse pointers and restores the trigger after close", () => {
     mockPointerCoarse(true);
     const onAfterCloseAutoFocus = vi.fn();
