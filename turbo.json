@@ -603,6 +603,14 @@
       ],
       "passThroughEnv": ["UPDATE_PARITY_ROW_COUNTS"]
     },
+    "@bb/domain#test": {
+      "dependsOn": ["//#ensure-native-modules", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/vitest.shared.ts",
+        "$TURBO_ROOT$/packages/plugin-sdk/package.json"
+      ]
+    },
     "test": {
       "dependsOn": ["//#ensure-native-modules", "topo"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest*.ts"],
