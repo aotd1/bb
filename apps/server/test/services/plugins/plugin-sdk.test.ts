@@ -582,6 +582,24 @@ describe("plugin bb.sdk against a running server", () => {
         const api = requireApi(server.pluginService, pluginId);
         const result = await api.sdk.threads.experimental_importHistory(batch);
         ids.push(result.threadId);
+        await expect(
+          api.sdk.threads.experimental_findExternalThread({
+            projectId: batch.projectId,
+            sourceId: batch.sourceId,
+            conversationId: batch.conversationId,
+            ...{ pluginId: "spoofed-owner" },
+          }),
+        ).resolves.toMatchObject({
+          binding: { threadId: result.threadId, mode: "passive" },
+        });
+        await expect(
+          api.sdk.threads.experimental_releaseExternalSession({
+            threadId: result.threadId,
+            expectedGeneration: batch.generation,
+            expectedSessionId: batch.sessionId,
+            ...{ pluginId: "spoofed-owner" },
+          }),
+        ).resolves.toMatchObject({ changed: false, mode: "passive" });
         expect(getThread(server.db, result.threadId)).toMatchObject({
           originPluginId: pluginId,
           providerId: "external-history",

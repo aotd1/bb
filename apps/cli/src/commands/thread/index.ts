@@ -1,4 +1,5 @@
 import { registerImportHistoryCommand } from "./import-history.js";
+import { registerExternalSessionCommands } from "./external-session.js";
 import { registerContextCommand } from "./context.js";
 import { Command } from "commander";
 import { registerActionsCommands } from "./actions.js";
@@ -22,6 +23,7 @@ export function registerThreadCommands(
   registerSpawnCommand(thread, getUrl);
   registerForkCommand(thread, getUrl);
   registerImportHistoryCommand(thread, getUrl);
+  registerExternalSessionCommands(thread, getUrl);
   registerListCommand(thread, getUrl);
   registerCountCommand(thread, getUrl);
   registerContextCommand(thread, getUrl);

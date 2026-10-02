@@ -3668,109 +3668,202 @@ before stabilizing this option.
 
 ## `bb.sdk.threads.experimental_importHistory`
 
-Creates or continues a passive ordinary thread. The plugin-bound SDK always
-uses its owning `pluginId`; the general SDK and CLI require it explicitly.
-The public route is `POST /api/v1/threads/experimental-import-history`, behind
-the ordinary public API origin/access checks and public project/thread lookup.
-It accepts no SQL, event envelopes, runtime options, host, or filesystem paths.
+`POST /api/v1/threads/experimental-import-history` imports finalized history
+without any provider/runtime dispatch. The owning plugin ID is forced by the
+Plugin SDK; general SDK/CLI callers specify it explicitly. Ordinary origin/access
+checks and public project/thread lookup apply. No raw SQL or canonical event
+envelopes are accepted. CLI: `bb thread import-history --file batch.json --json`.
 
-The durable binding key is `(projectId, pluginId, sourceId, conversationId)`.
-`providerId` is the external provider identity, not a BB execution provider.
-BB uses the reserved `external-history` execution provider, an idle status,
-and no environment. An optional `threadId` asserts an existing binding; this
-API cannot claim a pre-existing ordinary thread. Soft-deleted threads are refused; permanent deletion/purging releases
-the binding with its thread. Connectors must honor user deletions rather than
-continually recreating removed conversations.
-`initialTitle` and `initialPluginMetadata` are creation seeds only. Replays do
-not overwrite local edits; later title and metadata changes use the existing
-thread update/metadata APIs. Metadata is owned by the importing plugin and is
-not injected into any model. The source/session identities live in the core
-binding and message records, separate from runtime `thread/identity` handles.
+Identity is `(projectId, pluginId, sourceId, conversationId)`. Source `providerId`
+is immutable; `sessionId` can change only with a higher connector-chosen
+`generation`. New threads use reserved execution provider `external-history`,
+idle status and no environment. `threadId` asserts an existing binding.
+`initialTitle`, `initialSourceTitle` (stored as the ordinary searchable title
+fallback), `initialPluginMetadata`, `initialCreatedAt`, `initialUpdatedAt` seed
+creation only. Later batches can set `activityAt`, advancing activity monotonically
+without changing source message times. It must not precede thread creation.
+Metadata remains in the plugin namespace and is never sent to a model.
 
-Messages are `{ id, order, role: "user" | "assistant", text, createdAt }`.
-`order` is a nonnegative safe integer chosen by the connector and strictly
-increases in each batch. The canonical timeline follows order, even when
-source timestamps are equal or decrease. `createdAt` is integer Unix
-milliseconds (0 through the JavaScript date limit), retained on each message's
-canonical events. IDs are nonempty strings scoped to a thread and generation.
-Source IDs/conversation IDs/session IDs/message IDs are limited to 512
-characters. Each nonempty text is at most 128,000 characters; whitespace is
-allowed. Only finalized text messages are supported. Tools, system roles,
-reasoning, streaming patches, attachment IDs/URLs/paths, and arbitrary raw
-provider events are rejected. This version does not acquire attachment
-ownership because it accepts no attachments. Upload/attachment mapping is a
-separate future contract; do not encode an attachment path as an accepted
-attachment reference.
+`messages` contains `{id, order, role: user|assistant, text, createdAt}`. User
+messages may include at most 32 `attachments: [{type: localImage|localFile, path}]`;
+use only canonical project attachment upload paths. Arbitrary filesystem paths,
+remote image URLs and cross-project/unready/deletion-claimed attachments are
+rejected. User input can have empty text when attachments exist. Each message
+becomes one server-minted completed archival turn; user items project with the
+external-history user-role marker. Source time/order survives unchanged.
 
-Exact repeats compare order, role, text, original time, and session identity,
-then return `skipped` without events, changes to attention, or realtime
-notifications. Existing messages are immutable. A changed ID payload, a
-new message at/before the saved cursor, provider identity changes, attempts to
-bind another thread, or an active/non-passive/archived thread produce HTTP 409
-`external_history_conflict`. Batches may overlap old exact repeats followed
-by new messages. No insert, edit, delete, or reorder behind the cursor is
-supported. Fetch initial history oldest-first. If a connector discovers older
-history later, report the gap rather than fabricate completeness or overwrite
-history. A current empty batch returns the binding and cursor without running
-anything. SDK/CLI results are `{ threadId, created, inserted, skipped,
-generation, lastOrder }`.
+Optional `turns` contains whole finalized source turns:
+`{id, order, createdAt, completedAt, status: completed|failed|interrupted,
+items: [{createdAt, item}]}`. Item times must fall within turn bounds. Supported
+strict semantic `item.type` shapes are:
 
-`generation` is a connector-chosen nonnegative safe integer. It may increase
-when a source resets/replaces its session; a replacement `sessionId` requires
-an increase. Increasing generation keeps the same BB thread, preserves every
-older canonical event and dedupe record, and resets the order cursor. IDs and
-order may be reused in the new generation. Requests from a previous generation
-fail with 409, including old retries. An empty batch can commit a new
-generation before its first message. Compaction or a truncated `chat.history`
-window alone is not a reset and must not change the generation, erase older
-messages, or reuse IDs. Source sequence assignment, stable ID recovery, and
-generation detection belong to the connector.
+- `user`: text and optional uploaded attachments; `assistant` / `plan`: text.
+- `reasoning`: bounded summary/content string arrays.
+- `tool`: name, optional server/JSON arguments/result/string error, terminal status.
+- `command`: command, cwd, output, optional integer exitCode, terminal status.
+- `fileChange`: bounded path/kind/movePath/diff records, terminal status.
 
-`attention` defaults to `preserve`: append updates activity time but keeps both
-read markers intact, suitable for initial backfill. `unread` advances attention
-using server arrival time and marks the thread unread with the existing
-`lastReadAt: null` policy, suitable
-for new finalized live input/output, even when original time is old. Repeated
-batches do not mark a thread unread again. No lifecycle `turn.completed` hook
-or push notification is fabricated for a model that never ran. The ordinary `thread.created` plugin announcement runs after creation commits.
-The core realtime notifier announces committed thread creation/events/read-state and
-project thread-list changes; event subscriptions and timeline/search consume
-the same canonical projection path.
+The server translates these into canonical completed items and owns all event,
+turn and item IDs. Command/file-change records are archival descriptions and
+execute nothing. No provider/system events, streaming patches, approvals,
+extensions, arbitrary canonical items or partially complete turns are accepted.
+Whole turns cannot span batches or be extended after import; collect terminal
+items first. Specialized provider items outside this whitelist need a deliberate
+adapter conversion or a further typed contract, not a raw JSON escape hatch.
 
-Each batch is one SQLite immediate transaction, including creation, binding,
-deduplication/cursor, canonical events, search segments, metadata seed, and
-attention. Notifications happen only after commit. Maximum 500 messages and
-1 MiB UTF-8 JSON per request (including metadata); metadata is also limited to
-256 KiB. HTTP body admission returns 413; schema/shape/semantic batch
-validation returns 400 `invalid_request`. Larger history uses several batches;
-atomicity does not span requests. The database unique constraints and writer
-transaction serialize competing connectors. Exact repetitions within one
-batch are rejected as duplicate IDs, rather than counted as replays.
+IDs/orders are shared between messages and turns. Each lane is strictly ordered,
+then merged by order; IDs and orders are unique across the batch. Orders are
+nonnegative safe integers; timestamps are nonnegative integer Unix milliseconds
+through the JavaScript date limit. Identity/entry IDs are at most 512 characters,
+each text at most 128,000 characters, a source title at most 4096. At most 500
+terminal items total and 1 MiB UTF-8 JSON per batch; metadata also caps at 256 KiB.
+HTTP admission returns 413; invalid shape/semantics returns 400. Larger history
+uses separate atomic requests. Initial history must arrive oldest-first.
 
-Every message is represented as a server-minted, already completed timeline
-turn with one completed `userMessage` or `agentMessage`. It is an archival
-container, not a BB runtime turn or outbound request. The user item carries
-`experimental_externalHistory: true`, which projects it as user conversation
-rather than provider-internal system work. This additive stored-event marker
-is created/read on the server only; bridges are not required to emit it, and
-old events without it retain their previous projection. Older host daemons
-remain compatible because this API never sends imported items through the
-server/daemon wire. No provider-bridge methods, capabilities, grammar version,
-or session semantics change.
+Exact IDs compare immutable payload, order, source time and session identity.
+Replays skip without events, unread or realtime changes. Changed messages/turns,
+new entries behind the cursor and stale generations return 409
+`external_history_conflict`. A higher generation retains old events/dedupe and
+resets the order cursor; reset may be committed with an empty batch. Source
+compaction, a truncated window or a stale Gateway cursor is not a session reset.
+Interactive threads must release their provider session before generation change.
 
-Sending/queueing turns is rejected with `external_history_read_only`. Other
-runtime actions require a real provider/environment and cannot attach one
-through this API. Import refuses both an active status and an unfinished
-stored canonical turn, including a corrupted idle thread with active events.
-This version has no promotion to an interactive bridge session. Future replies
-require a separately audited binding/promotion contract and user authorization;
-passive live updates already use this API repeatedly.
+`adoptThreadId` explicitly claims a legacy ordinary thread in the same project,
+with matching execution provider and an owned stored source session. It must have
+no external binding to another identity. Every adopted item references an
+`existingSequence`; the server verifies same-thread event type, terminal
+content/attachments and timestamp before recording the external ID/cursor.
+No events, title/time/metadata seeds or unread markers are rewritten. Existing
+sequences identify completed items or outbound user request records only. An
+archived thread can be adopted/indexed only through existing references; it
+cannot receive new events. Unsupported/invalid legacy items return 409 and need
+separate repair before adoption (including known old nullable tool errors).
 
-Before stabilization: audit connector reset/identity semantics, large-history
-pagination/backfill needs, retention/deletion of dedupe records, message edits,
-attachment ownership, user-role rendering and search rebuild, source identity
-read/discovery APIs, caller attribution, and safe promotion to provider-backed
-threads. Prove connectors neither dispatch a runtime nor infer missing external
-history from a truncated source. Exercise the published conformance kit if a
-future bridge contract is extended; history import does not replace bridge
-conformance.
+On an existing bound thread, `existingSequence` can also acknowledge a reply
+already recorded through BB's provider runtime. Optional `existingCreatedAt`
+asserts that canonical event's timestamp when it differs from the Gateway
+message's `createdAt`; it requires a sequence. Source time is retained in the
+immutable external fingerprint and canonical BB time is unchanged. All items
+of a turn must be existing references or all new. Replays with references must
+point to the original sequence and still match content/time. The connector owns
+BB request/run/message mapping; core never guesses by text or silently removes
+runtime rows. Acknowledgements update dedupe/cursor but append no events and
+create no unread/realtime changes. `inserted` counts new external ID records,
+including acknowledgements; `skipped` counts prior IDs, not canonical events.
+
+Import accepts only settled idle/error threads and rejects active threads, unfinished canonical turns, queued work,
+concurrent send/context mutations and archived new history. A bound interactive
+thread must still own its explicitly bound runtime provider/session; divergent BB `/clear` or
+provider identities require explicit release/reconciliation. `attention: preserve`
+keeps read state; `unread` advances arrival-time attention only for new canonical
+history. Soft-deleted threads return 404; permanent deletion cascades bindings.
+Connectors must remember user deletion rather than automatically recreate threads.
+
+One immediate SQLite transaction covers thread/binding/dedupe/cursor, source time
+seeds, canonical events, search, uploaded attachment ownership and attention.
+Notifications and `thread.created` hooks run after commit only. Import fabricates
+no runtime completion hook or outbound request. Result is
+`{threadId, created, inserted, skipped, generation, lastOrder}`. Pure legacy
+adoption/acknowledgement does not announce event changes. The session-binding extension adds nullable runtime provider/handle columns only
+to the external binding table; existing vanilla tables remain unchanged.
+
+Before stabilization: audit connector identity/reset and pagination semantics,
+legacy adoption and nullable-item repair, cross-lane BB/Gateway message mapping,
+retention/deletion, edits/backfill, source title fallback, large output recovery,
+attachment ownership and transaction/realtime guarantees. Prove import never
+starts a runtime and never invents history missing from the source.
+
+## `bb.sdk.threads.experimental_findExternalThread`
+
+`POST /api/v1/threads/experimental-find-external-thread` takes the four binding
+key fields and returns `{binding: null | {threadId, providerId, sessionId,
+generation, lastOrder, mode: passive|interactive, runtimeProviderId, runtimeProviderThreadId,
+environmentId, archived}}`. Plugin SDK forces its owner. Lookup is read-only,
+works on archived bindings, rejects soft-deleted threads and does not recreate
+or notify. CLI: `bb thread find-external-thread --file key.json --json`.
+Before stabilization: audit source discovery, access and deletion semantics.
+
+## `bb.sdk.threads.experimental_bindExternalSession`
+
+`POST /api/v1/threads/experimental-bind-external-session` takes `{pluginId,
+threadId, expectedGeneration, expectedSessionId, providerId, environmentId,
+providerThreadId}`. Plugin SDK forces its owner. Requires this plugin's binding,
+matching generation/session, settled idle/error and unarchived status, no active stored turn, queued
+work, pending interaction or in-flight context/send mutation. Provider must be
+registered, enabled and have a host artifact. Environment must be ready in the
+same project, on an active host, with no teardown or foreign preparation owner.
+`providerThreadId` is the explicit opaque runtime resume handle and may differ
+from source `sessionId` (for example a stable Gateway session key versus a physical
+session UUID). The binding persists both separately. Source identity and execution
+provider ID can also differ only through this explicit choice, never a default.
+
+The transaction switches execution provider/environment, cancels pending
+retirement and appends the ordinary runtime `thread/identity` claim. Other threads' provider/session claims in that host scope reject atomically. An exact
+repeat is a no-op; another target requires release first. Result:
+`{threadId, changed, mode: interactive}`. Notifications use core thread/environment
+projections. Binding sends no host command and launches no runtime/model. A later
+ordinary `send` prepares `turn.submit` with the imported provider session, so a
+cold daemon performs `thread/resume` before `turn/start`, instead of starting a
+new provider session. The bridge must fail explicitly if its source session is
+missing; it must not create a replacement silently.
+
+CLI: `bb thread bind-external-session --file binding.json --json`.
+Before stabilization: audit provider/host trust, ownership, concurrent mutations,
+missing sessions and restart recovery with third-party bridges.
+
+## `PluginProviderOptionsContext.experimental_externalSession`
+
+Optional server-side context for a bound external thread, supplied to
+`deriveProviderOptions` on session/turn commands: readonly `{sourceId,
+conversationId, sourceProviderId, sessionId, generation, providerThreadId}`.
+It is absent for ordinary/passive threads. The resolver can forward selected
+IDs through its existing provider-specific `providerOptions`; core does not
+inject new wire keys into bridges that do not opt in. This lets an OpenClaw
+bridge receive both the Gateway resume/session key and expected physical
+session UUID, and reject replacement before sending. No metadata or secrets
+are added. First-party providers may ignore this optional context unchanged.
+Before stabilization: audit reset races, resolver ownership, identity privacy
+and compatibility with providers that ignore the field.
+
+## `bb.sdk.threads.experimental_releaseExternalSession`
+
+`POST /api/v1/threads/experimental-release-external-session` takes `{pluginId,
+threadId, expectedGeneration, expectedSessionId}` with the same owning-binding,
+settled idle/error, queue and interaction guards. It holds the context mutation guard while awaiting
+only a daemon `thread.stop` with intent `release`. Failure or an active retained
+provider turn preserves the binding and returns an error; no interrupt command
+is sent. Only a confirmed release detaches environment and restores execution
+provider `external-history`. All history, identities, dedupe and source metadata
+remain. A passive repeat is a no-op. Result `{threadId, changed, mode: passive}`.
+Release does not clear/hide context, archive the source or run a model.
+
+For source reset: release, import a higher generation/new session, then explicitly
+bind that session. For rebinding another host/provider: release, then bind the
+existing source session. Do not equate compaction with reset. CLI:
+`bb thread release-external-session --file identity.json --json`.
+Before stabilization: audit external-turn races, offline hosts, cancellation,
+restart recovery and environment retirement after detachment.
+
+These additions use the existing bridge contract. The published conformance kit
+still checks resume identity, turn grammar and idle release. No bridge method,
+capability, grammar version or server/daemon wire field changes. A future OpenClaw
+plugin combines finalized snapshot/live import, explicit session binding and its
+own registered host bridge; core API alone does not connect a Gateway or call
+`chat.send`. The bridge's `thread/resume` establishes the source session, and
+`turn/start` sends only the explicit BB prompt. Observe session events before the
+snapshot, reconcile on reconnect, exclude/acknowledge BB-owned runs, and import
+other finalized source messages only after BB settles. Full Telegram history,
+secret access and Gateway-version-specific RPCs are outside this core contract.
+
+### Provider discovery metadata
+
+`package.json` → `bb.experimental_providers` statically declares
+`{ kind, id, displayName }` provider identities before a plugin runs. `kind`
+uses the `providerKind` vocabulary and currently accepts only `"agent"`, which
+feeds Settings → Providers so disabled plugins' agents stay discoverable. It does
+not grant runtime capabilities or execute code. Core also retains the last
+registered agent identities when disabling a plugin, preserving custom providers
+across restart. Add `"environment"` or `"machine"` only together with a consumer.
+Stabilize after validating first-install discovery, shared-plugin enablement,
+dynamic provider removal, plugin upgrades, and duplicate-ID ownership behavior
+with third-party providers.

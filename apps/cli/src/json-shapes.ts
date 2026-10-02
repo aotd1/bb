@@ -10,6 +10,10 @@ export const JSON_SHAPE_BY_COMMAND_PATH: Readonly<Record<string, string>> = {
   "thread output": "{output}",
   "thread spawn":
     "the created thread: {id, status, title, projectId, environmentId, ...}",
+  "thread bind-external-session": "{threadId, changed, mode}",
+  "thread release-external-session": "{threadId, changed, mode}",
+  "thread find-external-thread":
+    "{binding: null | {threadId, providerId, sessionId, generation, lastOrder, mode, runtimeProviderId, runtimeProviderThreadId, environmentId, archived}}",
   "thread import-history":
     "{threadId, created, inserted, skipped, generation, lastOrder}",
   "thread wait": "{threadId, matched: true, target}",

@@ -785,6 +785,8 @@ export const externalThreadBindings = sqliteTable(
     conversationId: text("conversation_id").notNull(),
     providerId: text("provider_id").notNull(),
     sessionId: text("session_id").notNull(),
+    runtimeProviderId: text("runtime_provider_id"),
+    runtimeSessionId: text("runtime_session_id"),
     generation: integer("generation").notNull(),
     lastOrder: integer("last_order"),
   },

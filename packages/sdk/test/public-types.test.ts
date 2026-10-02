@@ -390,6 +390,9 @@ type ExpectedThreadSectionsKey = "create" | "delete" | "list" | "update";
 
 type ExpectedThreadsKey =
   | "experimental_importHistory"
+  | "experimental_bindExternalSession"
+  | "experimental_releaseExternalSession"
+  | "experimental_findExternalThread"
   | "getPluginMetadata"
   | "updatePluginMetadata"
   | "context"

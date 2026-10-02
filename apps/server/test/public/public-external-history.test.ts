@@ -303,7 +303,7 @@ describe("external history import", () => {
       );
       expect(() =>
         importExternalHistory(store, { ...store.batch, messages: [] }),
-      ).toThrow("passive idle");
+      ).toThrow("idle, unarchived");
       store.db
         .update(threads)
         .set({ status: "active" })
@@ -311,7 +311,7 @@ describe("external history import", () => {
         .run();
       expect(() =>
         importExternalHistory(store, { ...store.batch, messages: [] }),
-      ).toThrow("passive idle");
+      ).toThrow("idle, unarchived");
     } finally {
       store.close();
     }

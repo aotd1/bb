@@ -12,7 +12,7 @@ export function registerImportHistoryCommand(
   thread
     .command("import-history")
     .description(
-      "Import a passive external conversation without running a model (experimental)",
+      "Import finalized external history without running a model (experimental)",
     )
     .requiredOption("--file <path>", "JSON history batch; - reads stdin")
     .option("--json", "Print the import result as JSON")

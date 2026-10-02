@@ -1,9 +1,20 @@
 import type {
   ExperimentalImportHistoryRequest,
+  ExperimentalBindExternalSessionRequest,
+  ExperimentalReleaseExternalSessionRequest,
+  ExperimentalFindExternalThreadRequest,
+  ExperimentalFindExternalThreadResponse,
+  ExperimentalExternalSessionResponse,
   ExperimentalImportHistoryResponse,
 } from "@bb/server-contract";
 export type {
+  ExternalHistoryItem,
   ExperimentalImportHistoryRequest,
+  ExperimentalBindExternalSessionRequest,
+  ExperimentalReleaseExternalSessionRequest,
+  ExperimentalFindExternalThreadRequest,
+  ExperimentalFindExternalThreadResponse,
+  ExperimentalExternalSessionResponse,
   ExperimentalImportHistoryResponse,
 } from "@bb/server-contract";
 import {
@@ -555,6 +566,15 @@ export interface ThreadQueueArea {
 }
 
 export interface ThreadsArea {
+  experimental_findExternalThread(
+    input: ExperimentalFindExternalThreadRequest,
+  ): Promise<ExperimentalFindExternalThreadResponse>;
+  experimental_releaseExternalSession(
+    input: ExperimentalReleaseExternalSessionRequest,
+  ): Promise<ExperimentalExternalSessionResponse>;
+  experimental_bindExternalSession(
+    input: ExperimentalBindExternalSessionRequest,
+  ): Promise<ExperimentalExternalSessionResponse>;
   experimental_importHistory(
     input: ExperimentalImportHistoryRequest,
   ): Promise<ExperimentalImportHistoryResponse>;
@@ -1108,6 +1128,27 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     },
   };
   return {
+    async experimental_bindExternalSession(input) {
+      return transport.readJson(
+        transport.api.v1.threads["experimental-bind-external-session"].$post({
+          json: input,
+        }),
+      );
+    },
+    async experimental_releaseExternalSession(input) {
+      return transport.readJson(
+        transport.api.v1.threads["experimental-release-external-session"].$post(
+          { json: input },
+        ),
+      );
+    },
+    async experimental_findExternalThread(input) {
+      return transport.readJson(
+        transport.api.v1.threads["experimental-find-external-thread"].$post({
+          json: input,
+        }),
+      );
+    },
     async experimental_importHistory(input) {
       return transport.readJson(
         transport.api.v1.threads["experimental-import-history"].$post({

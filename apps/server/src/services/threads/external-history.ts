@@ -1,13 +1,17 @@
 import { createHash, randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import {
+  acquireProjectAttachmentOwnership,
   appendStoredThreadEventsInTransaction,
   createThread,
+  events,
   externalThreadBindings,
   externalThreadMessages,
   getActiveStoredTurnId,
+  getStoredProviderSession,
   noopNotifier,
   threads,
+  queuedThreadMessages,
   type DbConnection,
   type DbNotifier,
   type AppendStoredThreadEventArgs,
@@ -23,6 +27,12 @@ import {
 } from "../lib/entity-lookup.js";
 import { ApiError } from "../../errors.js";
 import { emitPluginThreadCreated } from "../plugins/plugin-thread-events.js";
+import { ensureThreadContextIsSettled } from "./thread-context-mutation-guard.js";
+import {
+  externalHistoryItem,
+  stableExternalHistoryJson,
+  validateExistingExternalItem,
+} from "./external-history-items.js";
 
 function conflict(message: string): never {
   throw new ApiError(409, "external_history_conflict", message);
@@ -36,6 +46,67 @@ export function importExternalHistory(
   if (!parsed.success)
     throw new ApiError(400, "invalid_request", parsed.error.message);
   const batch = parsed.data;
+  const entries = [
+    ...batch.messages.map((message) => ({
+      id: message.id,
+      order: message.order,
+      createdAt: message.createdAt,
+      completedAt: message.createdAt,
+      status: "completed" as const,
+      digest: createHash("sha256")
+        .update(
+          stableExternalHistoryJson(
+            JSON.stringify([
+              message.order,
+              message.role,
+              message.text,
+              message.createdAt,
+              ...(message.attachments?.length ? [message.attachments] : []),
+            ]),
+          ),
+        )
+        .digest("hex"),
+      items: [
+        {
+          createdAt: message.createdAt,
+          existingSequence: message.existingSequence,
+          existingCreatedAt: message.existingCreatedAt,
+          item: externalHistoryItem(
+            message.role === "user"
+              ? {
+                  type: "user",
+                  text: message.text,
+                  ...(message.attachments === undefined
+                    ? {}
+                    : { attachments: message.attachments }),
+                }
+              : { type: "assistant", text: message.text },
+          ),
+        },
+      ],
+    })),
+    ...(batch.turns ?? []).map((turn) => ({
+      ...turn,
+      digest: createHash("sha256")
+        .update(
+          stableExternalHistoryJson(
+            JSON.stringify([
+              "turn",
+              turn.order,
+              turn.createdAt,
+              turn.completedAt,
+              turn.status,
+              turn.items.map(({ item, createdAt }) => ({ item, createdAt })),
+            ]),
+          ),
+        )
+        .digest("hex"),
+      items: turn.items.map((entry) => ({
+        ...entry,
+        item: externalHistoryItem(entry.item),
+      })),
+    })),
+  ].sort((a, b) => a.order - b.order);
   const result = deps.db.transaction(
     (tx) => {
       requirePublicProject(deps.db, batch.projectId);
@@ -63,25 +134,94 @@ export function importExternalHistory(
         batch.sessionId !== binding.sessionId
       )
         conflict("Session replacement requires a higher generation");
-      if (binding) {
-        const thread = requirePublicThread(deps.db, binding.threadId);
+      const existingThreadId = binding?.threadId ?? batch.adoptThreadId;
+      if (
+        batch.adoptThreadId &&
+        binding &&
+        batch.adoptThreadId !== binding.threadId
+      )
+        conflict("adoptThreadId differs from the bound thread");
+      if (existingThreadId) {
+        ensureThreadContextIsSettled(existingThreadId);
+        const thread = requirePublicThread(deps.db, existingThreadId);
         if (
-          thread.archivedAt !== null ||
-          thread.status !== "idle" ||
-          thread.environmentId !== null ||
-          getActiveStoredTurnId(tx, thread.id) !== null
+          thread.projectId !== batch.projectId ||
+          (thread.archivedAt !== null &&
+            !(
+              batch.adoptThreadId === thread.id &&
+              entries.every((entry) =>
+                entry.items.every(
+                  (item) => item.existingSequence !== undefined,
+                ),
+              )
+            )) ||
+          (thread.status !== "idle" && thread.status !== "error") ||
+          getActiveStoredTurnId(tx, thread.id) !== null ||
+          tx
+            .select({ id: queuedThreadMessages.id })
+            .from(queuedThreadMessages)
+            .where(eq(queuedThreadMessages.threadId, thread.id))
+            .limit(1)
+            .get() !== undefined
         )
-          conflict("Import requires a passive idle, unarchived thread");
-        if (thread.providerId !== "external-history")
-          conflict("External thread is no longer passive");
-      }
+          conflict(
+            "Import requires an idle, unarchived thread in this project",
+          );
+        if (!binding) {
+          const other = tx
+            .select()
+            .from(externalThreadBindings)
+            .where(eq(externalThreadBindings.threadId, thread.id))
+            .get();
+          const session = getStoredProviderSession(tx, thread.id);
+          if (
+            other ||
+            thread.providerId !== batch.providerId ||
+            session.kind !== "owned" ||
+            session.providerThreadId !== batch.sessionId
+          )
+            conflict(
+              "Adoption requires an unbound thread owning the exact provider session",
+            );
+          if (
+            entries.some((entry) =>
+              entry.items.some((item) => item.existingSequence === undefined),
+            )
+          )
+            conflict("Adoption must reference existing events for every item");
+        } else if (thread.providerId === "external-history") {
+          if (thread.environmentId !== null)
+            conflict("Passive external thread has an environment");
+        } else {
+          const session = getStoredProviderSession(tx, thread.id);
+          if (
+            thread.environmentId === null ||
+            session.kind !== "owned" ||
+            session.providerThreadId !== binding.runtimeSessionId ||
+            thread.providerId !== binding.runtimeProviderId
+          )
+            conflict(
+              "Interactive session differs from its external binding; release it before syncing",
+            );
+          if (batch.generation !== binding.generation)
+            conflict(
+              "Release the interactive session before importing a reset",
+            );
+        }
+      } else if (
+        entries.some((entry) =>
+          entry.items.some((item) => item.existingSequence !== undefined),
+        )
+      )
+        conflict("Existing sequences require an existing or adopted thread");
       const threadId =
-        binding?.threadId ??
+        existingThreadId ??
         createThread(tx, noopNotifier, {
           projectId: batch.projectId,
           providerId: "external-history",
           status: "idle",
           title: batch.initialTitle ?? null,
+          titleFallback: batch.initialSourceTitle ?? null,
           originPluginId: batch.pluginId,
           pluginMetadata:
             batch.initialPluginMetadata === undefined
@@ -91,11 +231,26 @@ export function importExternalHistory(
                   metadata: batch.initialPluginMetadata,
                 },
         }).id;
-      const previousOrder =
+      if (
+        !existingThreadId &&
+        (batch.initialCreatedAt !== undefined ||
+          batch.initialUpdatedAt !== undefined)
+      ) {
+        const thread = requirePublicThread(deps.db, threadId);
+        const createdAt = batch.initialCreatedAt ?? thread.createdAt;
+        const updatedAt =
+          batch.initialUpdatedAt ?? Math.max(createdAt, thread.updatedAt);
+        if (updatedAt < createdAt)
+          conflict("Initial activity cannot precede creation");
+        tx.update(threads)
+          .set({ createdAt, updatedAt })
+          .where(eq(threads.id, threadId))
+          .run();
+      }
+      let lastOrder =
         binding?.generation === batch.generation ? binding.lastOrder : null;
-      let lastOrder = previousOrder;
       const existing =
-        batch.messages.length === 0
+        entries.length === 0
           ? []
           : tx
               .select()
@@ -106,7 +261,7 @@ export function importExternalHistory(
                   eq(externalThreadMessages.generation, batch.generation),
                   inArray(
                     externalThreadMessages.externalId,
-                    batch.messages.map((message) => message.id),
+                    entries.map((entry) => entry.id),
                   ),
                 ),
               )
@@ -114,27 +269,41 @@ export function importExternalHistory(
       const byId = new Map(
         existing.map((message) => [message.externalId, message]),
       );
-      const pending = batch.messages.flatMap((message) => {
-        const digest = createHash("sha256")
-          .update(
-            JSON.stringify([
-              message.order,
-              message.role,
-              message.text,
-              message.createdAt,
-            ]),
-          )
-          .digest("hex");
-        const old = byId.get(message.id);
+      const pending = entries.filter((entry) => {
+        const old = byId.get(entry.id);
         if (old) {
-          if (old.digest !== digest || old.sessionId !== batch.sessionId)
-            conflict(`Message ${message.id} changed; edits are unsupported`);
-          return [];
+          if (old.digest !== entry.digest || old.sessionId !== batch.sessionId)
+            conflict(`Message ${entry.id} changed; edits are unsupported`);
+          if (entry.items.some((item) => item.existingSequence !== undefined)) {
+            if (
+              entry.items[0]?.existingSequence !== old.sourceSequence ||
+              entry.items.some((item) => item.existingSequence === undefined)
+            )
+              conflict("Replay must reference the original existing sequences");
+            for (const item of entry.items) {
+              const row = tx
+                .select()
+                .from(events)
+                .where(
+                  and(
+                    eq(events.threadId, threadId),
+                    eq(events.sequence, item.existingSequence!),
+                  ),
+                )
+                .get();
+              validateExistingExternalItem(
+                row,
+                item.item,
+                item.existingCreatedAt ?? item.createdAt,
+              );
+            }
+          }
+          return false;
         }
-        if (lastOrder !== null && message.order <= lastOrder)
-          conflict(`Message ${message.id} precedes the import cursor`);
-        lastOrder = message.order;
-        return [{ message, digest }];
+        if (lastOrder !== null && entry.order <= lastOrder)
+          conflict(`Message ${entry.id} precedes the import cursor`);
+        lastOrder = entry.order;
+        return true;
       });
       if (!binding)
         tx.insert(externalThreadBindings)
@@ -147,68 +316,98 @@ export function importExternalHistory(
             providerId: batch.providerId,
             sessionId: batch.sessionId,
             generation: batch.generation,
+            runtimeProviderId: batch.adoptThreadId
+              ? requirePublicThread(deps.db, threadId).providerId
+              : null,
+            runtimeSessionId: batch.adoptThreadId ? batch.sessionId : null,
             lastOrder: null,
           })
           .run();
-      for (const { message, digest } of pending) {
-        const scope = {
-          kind: "turn" as const,
-          turnId: `external_${randomUUID()}`,
-        };
-        const itemId = `external_${randomUUID()}`;
-        const common = {
-          threadId,
-          scope,
-          providerThreadId: batch.sessionId,
-          createdAt: message.createdAt,
-        };
-        const events: AppendStoredThreadEventArgs[] = [
-          {
-            ...common,
-            type: "turn/started",
-            data: { providerThreadId: batch.sessionId },
-          },
-          {
-            ...common,
-            type: "item/completed",
-            data: {
-              providerThreadId: batch.sessionId,
-              item:
-                message.role === "user"
-                  ? {
-                      type: "userMessage",
-                      id: itemId,
-                      experimental_externalHistory: true,
-                      content: [{ type: "text", text: message.text }],
-                    }
-                  : { type: "agentMessage", id: itemId, text: message.text },
+      let appended = 0;
+      for (const entry of pending) {
+        const paths = entry.items.flatMap(({ item }) =>
+          item.type === "userMessage"
+            ? item.content.flatMap((part) =>
+                part.type === "localFile" || part.type === "localImage"
+                  ? [part.path]
+                  : [],
+              )
+            : [],
+        );
+        acquireProjectAttachmentOwnership(tx, threadId, paths);
+        let sourceSequence: number;
+        if (entry.items.every((item) => item.existingSequence !== undefined)) {
+          for (const item of entry.items) {
+            const row = tx
+              .select()
+              .from(events)
+              .where(
+                and(
+                  eq(events.threadId, threadId),
+                  eq(events.sequence, item.existingSequence!),
+                ),
+              )
+              .get();
+            validateExistingExternalItem(
+              row,
+              item.item,
+              item.existingCreatedAt ?? item.createdAt,
+            );
+          }
+          sourceSequence = entry.items[0]!.existingSequence!;
+        } else {
+          if (entry.items.some((item) => item.existingSequence !== undefined))
+            conflict("A completed turn cannot mix existing and new items");
+          const scope = {
+            kind: "turn" as const,
+            turnId: `external_${randomUUID()}`,
+          };
+          const common = { threadId, scope, providerThreadId: batch.sessionId };
+          const stored: AppendStoredThreadEventArgs[] = [
+            {
+              ...common,
+              createdAt: entry.createdAt,
+              type: "turn/started",
+              data: { providerThreadId: batch.sessionId },
             },
-          },
-          {
-            ...common,
-            type: "turn/completed",
-            data: { providerThreadId: batch.sessionId, status: "completed" },
-          },
-        ];
-        const sequences = appendStoredThreadEventsInTransaction(tx, events);
-        const sourceSequence = sequences[1];
-        if (sourceSequence === undefined)
-          throw new Error("Missing imported message sequence");
+            ...entry.items.map(
+              ({ item, createdAt }): AppendStoredThreadEventArgs => ({
+                ...common,
+                createdAt,
+                type: "item/completed",
+                data: { providerThreadId: batch.sessionId, item },
+              }),
+            ),
+            {
+              ...common,
+              createdAt: entry.completedAt,
+              type: "turn/completed",
+              data: { providerThreadId: batch.sessionId, status: entry.status },
+            },
+          ];
+          const sequences = appendStoredThreadEventsInTransaction(tx, stored);
+          if (sequences[1] === undefined)
+            throw new Error("Missing imported message sequence");
+          sourceSequence = sequences[1];
+          appended++;
+        }
         tx.insert(externalThreadMessages)
           .values({
             threadId,
             generation: batch.generation,
-            externalId: message.id,
-            sourceOrder: message.order,
-            digest,
+            externalId: entry.id,
+            sourceOrder: entry.order,
+            digest: entry.digest,
             sessionId: batch.sessionId,
             sourceSequence,
           })
           .run();
       }
-      const generationChanged =
-        binding !== undefined && batch.generation > binding.generation;
-      if (!binding || pending.length > 0 || generationChanged) {
+      if (
+        !binding ||
+        pending.length > 0 ||
+        batch.generation > binding.generation
+      )
         tx.update(externalThreadBindings)
           .set({
             generation: batch.generation,
@@ -217,51 +416,61 @@ export function importExternalHistory(
           })
           .where(eq(externalThreadBindings.threadId, threadId))
           .run();
-      }
-      if (pending.length > 0) {
-        const now = Date.now();
+      const importedThread = requirePublicThread(deps.db, threadId);
+      if (
+        batch.activityAt !== undefined &&
+        batch.activityAt < importedThread.createdAt
+      )
+        conflict("Source activity cannot precede thread creation");
+      if (appended > 0)
         tx.update(threads)
           .set({
-            updatedAt: now,
+            updatedAt:
+              batch.activityAt === undefined
+                ? !existingThreadId && batch.initialUpdatedAt !== undefined
+                  ? batch.initialUpdatedAt
+                  : Date.now()
+                : Math.max(importedThread.updatedAt, batch.activityAt),
             ...(batch.attention === "unread"
-              ? { latestAttentionAt: now, lastReadAt: null }
+              ? { latestAttentionAt: Date.now(), lastReadAt: null }
               : {}),
           })
           .where(eq(threads.id, threadId))
           .run();
-      }
       return {
         threadId,
-        created: !binding,
+        created: !existingThreadId,
         inserted: pending.length,
-        skipped: batch.messages.length - pending.length,
+        skipped: entries.length - pending.length,
         generation: batch.generation,
         lastOrder,
+        appended,
       };
     },
     { behavior: "immediate" },
   );
   if (result.created)
     emitPluginThreadCreated(requirePublicThread(deps.db, result.threadId));
-  if (result.created || result.inserted > 0) {
+  if (result.created || result.appended > 0) {
     deps.hub.notifyThread(
       result.threadId,
       [
         ...(result.created ? ["thread-created" as const] : []),
-        ...(result.inserted > 0 ? ["events-appended" as const] : []),
-        ...(result.inserted > 0 && batch.attention === "unread"
+        ...(result.appended > 0 ? ["events-appended" as const] : []),
+        ...(result.appended > 0 && batch.attention === "unread"
           ? ["read-state-changed" as const]
           : []),
       ],
       {
         projectId: batch.projectId,
         eventTypes:
-          result.inserted > 0
+          result.appended > 0
             ? ["turn/started", "item/completed", "turn/completed"]
             : [],
       },
     );
     deps.hub.notifyProject(batch.projectId, ["threads-changed"]);
   }
-  return result;
+  const { appended: _appended, ...response } = result;
+  return response;
 }

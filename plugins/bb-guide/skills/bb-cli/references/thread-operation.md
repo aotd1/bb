@@ -210,3 +210,18 @@ For review or fix pipelines, get the environment ID from
   same scope, size, and title. It does not replay the original launch command.
 
 Clearing a thread's parent with `bb thread update --clear-parent-thread` inherits the former parent's section unless the update explicitly supplies a section. Children released by environment archiving also inherit their former parent's section.
+
+## External history and provider sessions (experimental)
+
+`bb thread import-history --file batch.json --json` imports bounded finalized
+messages/completed turns and project-uploaded attachments through server projections.
+`adoptThreadId` with verified existing event sequences links legacy imports without
+copying history. Import is atomic and never runs a model.
+
+`bb thread find-external-thread --file key.json --json` reads the plugin-scoped
+binding. `bb thread bind-external-session --file binding.json --json` enables ordinary
+send/tell to the original provider session; requires a registered bridge, same-project
+ready environment, and expected source generation/session. Binding itself sends nothing.
+`bb thread release-external-session --file identity.json --json` releases only idle
+runtime, preserving history. Release before reset/rebinding; active work returns a
+conflict. See `bb guide threads` and the External thread history Plugin Guide card.
