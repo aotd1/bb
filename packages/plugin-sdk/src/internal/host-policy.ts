@@ -2396,7 +2396,9 @@ export interface NormalizedPluginEnvironmentProvider {
     PluginEnvironmentProviderDeclaration["experimental_existingPath"]
   > | null;
   create: PluginEnvironmentProviderDeclaration["create"];
-  restore: NonNullable<PluginEnvironmentProviderDeclaration["restore"]> | null;
+  restore: NonNullable<
+    PluginEnvironmentProviderDeclaration["restore"]
+  > | null;
   remove: PluginEnvironmentProviderDeclaration["remove"];
   policy: import("../environment-provider.js").PluginEnvironmentProviderPolicy;
 }
