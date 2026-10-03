@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import {
   appendStoredThreadEventsInTransaction,
+  createPendingInteraction,
   events,
   externalThreadBindings,
   externalThreadMessages,
@@ -29,8 +30,10 @@ import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
+  seedQueuedMessage,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { createCommandApprovalPayload } from "../helpers/pending-interactions.js";
 
 function fixture(harness: TestAppHarness, providerId = "codex") {
   if (providerId !== "codex") {
@@ -95,7 +98,13 @@ function fixture(harness: TestAppHarness, providerId = "codex") {
         : "agent:dooffin:telegram:group:topic:123",
     environmentId: environment.id,
   };
-  return { host, project, environment, batch, imported, bind };
+  const release = {
+    pluginId: bind.pluginId,
+    threadId: imported.threadId,
+    expectedGeneration: bind.expectedGeneration,
+    expectedSessionId: bind.expectedSessionId,
+  };
+  return { host, project, environment, batch, imported, bind, release };
 }
 
 async function post(harness: TestAppHarness, operation: string, body: object) {
@@ -107,6 +116,132 @@ async function post(harness: TestAppHarness, operation: string, body: object) {
 }
 
 describe("external provider sessions", () => {
+  it.each([
+    [false, "status"],
+    [false, "turn"],
+    [false, "queue"],
+    [true, "status"],
+    [true, "turn"],
+    [true, "queue"],
+  ] as const)(
+    "rejects history, bind and release with unsettled work (bound: %s, state: %s)",
+    async (bound, state) => {
+      await withTestHarness(async (harness) => {
+        const f = fixture(harness);
+        if (bound) bindExternalSession(harness.deps, f.bind);
+        if (state === "status") {
+          harness.db
+            .update(threads)
+            .set({ status: "active" })
+            .where(eq(threads.id, f.imported.threadId))
+            .run();
+        } else if (state === "turn") {
+          harness.db.transaction((tx) =>
+            appendStoredThreadEventsInTransaction(tx, [
+              {
+                threadId: f.imported.threadId,
+                type: "turn/started",
+                scope: { kind: "turn", turnId: "live" },
+                providerThreadId: f.bind.providerThreadId,
+                data: { providerThreadId: f.bind.providerThreadId },
+              },
+            ]),
+          );
+        } else {
+          seedQueuedMessage(harness.deps, {
+            threadId: f.imported.threadId,
+            content: [{ type: "text", text: "queued", mentions: [] }],
+          });
+        }
+        const before = getThread(harness.db, f.imported.threadId);
+        const beforeEvents = harness.db.select().from(events).all();
+        const beforeBinding = harness.db
+          .select()
+          .from(externalThreadBindings)
+          .all();
+        expect(() => importExternalHistory(harness.deps, f.batch)).toThrow(
+          "idle, unarchived",
+        );
+        expect(() => bindExternalSession(harness.deps, f.bind)).toThrow(
+          "idle, unarchived",
+        );
+        expect(
+          (await post(harness, "release-external-session", f.release)).status,
+        ).toBe(409);
+        expect(getThread(harness.db, f.imported.threadId)).toEqual(before);
+        expect(harness.db.select().from(events).all()).toEqual(beforeEvents);
+        expect(harness.db.select().from(externalThreadBindings).all()).toEqual(
+          beforeBinding,
+        );
+        for (const type of ["turn.submit", "thread.stop"] as const)
+          expect(
+            listQueuedThreadCommands(harness, type, f.imported.threadId),
+          ).toEqual([]);
+      });
+    },
+  );
+
+  it.each([false, true])(
+    "keeps history independent of interactions, while session changes reject turn-bound ones (%s)",
+    async (turnBound) => {
+      await withTestHarness(async (harness) => {
+        const f = fixture(harness);
+        createPendingInteraction(harness.db, {
+          threadId: f.imported.threadId,
+          payload: JSON.stringify(
+            turnBound
+              ? createCommandApprovalPayload()
+              : { kind: "plugin", title: "Confirm" },
+          ),
+          ...(turnBound
+            ? {
+                originKind: "provider" as const,
+                providerId: "codex",
+                providerThreadId: f.bind.providerThreadId,
+                providerRequestId: "pending-request",
+                turnId: "pending-turn",
+              }
+            : {
+                originKind: "plugin" as const,
+                pluginId: "test-card",
+                rendererId: "confirm",
+                turnId: null,
+              }),
+        });
+        expect(
+          importExternalHistory(harness.deps, {
+            ...f.batch,
+            messages: [
+              {
+                id: "m2",
+                order: 1,
+                role: "assistant",
+                text: "later reply",
+                createdAt: 2000,
+              },
+            ],
+          }).inserted,
+        ).toBe(1);
+        expect(
+          (await post(harness, "release-external-session", f.release)).status,
+        ).toBe(turnBound ? 409 : 200);
+        if (turnBound) {
+          expect(() => bindExternalSession(harness.deps, f.bind)).toThrow(
+            "interactions",
+          );
+        } else {
+          expect(bindExternalSession(harness.deps, f.bind).mode).toBe(
+            "interactive",
+          );
+        }
+        for (const type of ["turn.submit", "thread.stop"] as const)
+          expect(
+            listQueuedThreadCommands(harness, type, f.imported.threadId),
+          ).toEqual([]);
+      });
+    },
+  );
+
   it.each(["codex", "openclaw-dooffin"])(
     "binds without host work and routes the explicit send to the imported session: %s",
     async (providerId) => {

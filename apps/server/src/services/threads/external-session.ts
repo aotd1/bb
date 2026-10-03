@@ -4,11 +4,9 @@ import {
   classifyStoredProviderThreadClaim,
   externalThreadBindings,
   events,
-  getActiveStoredTurnId,
   getStoredProviderSession,
   getHost,
   environments,
-  queuedThreadMessages,
   threads,
 } from "@bb/db";
 import {
@@ -35,6 +33,7 @@ import {
   withThreadContextClearGuard,
 } from "./thread-context-mutation-guard.js";
 import { releaseIdleThreadRuntime } from "./thread-lifecycle.js";
+import { isExternalHistoryThreadSettled } from "./external-history-state.js";
 
 function conflict(message: string): never {
   throw new ApiError(409, "external_history_conflict", message);
@@ -63,14 +62,7 @@ function target(
     conflict("External binding changed; refresh before binding or releasing");
   if (
     thread.archivedAt !== null ||
-    (thread.status !== "idle" && thread.status !== "error") ||
-    getActiveStoredTurnId(deps.db, thread.id) !== null ||
-    deps.db
-      .select({ id: queuedThreadMessages.id })
-      .from(queuedThreadMessages)
-      .where(eq(queuedThreadMessages.threadId, thread.id))
-      .limit(1)
-      .get() !== undefined ||
+    !isExternalHistoryThreadSettled(deps.db, thread) ||
     deps.pendingInteractions.hasTurnBoundPendingThreadInteraction(thread.id)
   )
     conflict(

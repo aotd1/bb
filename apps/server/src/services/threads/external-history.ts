@@ -7,11 +7,9 @@ import {
   events,
   externalThreadBindings,
   externalThreadMessages,
-  getActiveStoredTurnId,
   getStoredProviderSession,
   noopNotifier,
   threads,
-  queuedThreadMessages,
   type DbConnection,
   type DbNotifier,
   type AppendStoredThreadEventArgs,
@@ -28,6 +26,7 @@ import {
 import { ApiError } from "../../errors.js";
 import { emitPluginThreadCreated } from "../plugins/plugin-thread-events.js";
 import { ensureThreadContextIsSettled } from "./thread-context-mutation-guard.js";
+import { isExternalHistoryThreadSettled } from "./external-history-state.js";
 import {
   externalHistoryItem,
   stableExternalHistoryJson,
@@ -155,14 +154,7 @@ export function importExternalHistory(
                 ),
               )
             )) ||
-          (thread.status !== "idle" && thread.status !== "error") ||
-          getActiveStoredTurnId(tx, thread.id) !== null ||
-          tx
-            .select({ id: queuedThreadMessages.id })
-            .from(queuedThreadMessages)
-            .where(eq(queuedThreadMessages.threadId, thread.id))
-            .limit(1)
-            .get() !== undefined
+          !isExternalHistoryThreadSettled(tx, thread)
         )
           conflict(
             "Import requires an idle, unarchived thread in this project",
