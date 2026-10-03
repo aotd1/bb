@@ -3,7 +3,7 @@ import { readMigrationFiles } from "drizzle-orm/migrator";
 import { dirname, join, resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { DbConnection } from "./connection.js";
+import { createConnection, type DbConnection } from "./connection.js";
 import {
   compatibleMigrationHashes,
   publishedMigrationWhensByTag,
@@ -1396,6 +1396,120 @@ function validateAppliedMigrationHistory(
   );
 }
 
+function reconcilePublishedExternalHistory(
+  db: DbConnection,
+  migrationsFolder: string,
+): void {
+  if (!tableExists(db, "__drizzle_migrations")) return;
+  const applied = db.$client
+    .prepare<[], AppliedMigrationIdentityRow>(
+      "SELECT hash, created_at AS createdAt FROM __drizzle_migrations",
+    )
+    .all();
+  const legacy = applied.find((row) => row.createdAt === 1790837064310);
+  if (legacy === undefined) return;
+  if (
+    legacy.hash !==
+    "ab8dfb8592d681f9abe0d1126c9585a89a0b3bb26370afe95594768f170ce940"
+  ) {
+    throw new Error("Unrecognized external history migration at 1790837064310");
+  }
+  const handles = applied.find((row) => row.createdAt === 1790941244761);
+  if (
+    handles !== undefined &&
+    handles.hash !==
+      "978b5eadc27c4153ac7fde7b6d5a6a82290c5e9014d3de13e10266e615a3f91d"
+  ) {
+    throw new Error("Unrecognized external session migration at 1790941244761");
+  }
+  const migrations = readExpectedAppliedMigrations(migrationsFolder);
+  const external = requireExpectedAppliedMigration(
+    migrations,
+    "0138_external_history",
+  );
+  const timestamps = new Set(
+    applied.flatMap((row) => (row.createdAt === null ? [] : [row.createdAt])),
+  );
+  const externalViolation = findAppliedMigrationHistoryViolation(
+    external,
+    applied,
+    timestamps,
+  );
+  if (externalViolation === null) return;
+  if (externalViolation.reason === "hash-mismatch")
+    throw new Error("External history migration hash mismatch");
+  const upstreamTags = new Set([
+    "0136_plugin_enabled_follows_default",
+    "0137_stiff_prism",
+  ]);
+  for (const migration of migrations) {
+    if (migration === external || upstreamTags.has(migration.tag)) continue;
+    if (
+      findAppliedMigrationHistoryViolation(migration, applied, timestamps) !==
+      null
+    ) {
+      throw new Error(
+        `Incomplete migration history before external history upgrade: ${migration.tag}`,
+      );
+    }
+  }
+  const reference = createConnection(":memory:");
+  try {
+    for (const statement of external.sql) reference.$client.exec(statement);
+    const shape = (connection: DbConnection, table: string) => ({
+      columns: getTableInfo(connection, table).sort((a, b) =>
+        a.name.localeCompare(b.name),
+      ),
+      foreignKeys: getForeignKeys(connection, table).sort((a, b) =>
+        a.from.localeCompare(b.from),
+      ),
+      indexes: getIndexes(connection, table)
+        .map((index) => ({
+          ...index,
+          columns: getIndexColumnNames(connection, index.name),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    });
+    db.$client
+      .transaction(() => {
+        if (handles === undefined) {
+          db.$client.exec(
+            "ALTER TABLE external_thread_bindings ADD runtime_provider_id text",
+          );
+          db.$client.exec(
+            "ALTER TABLE external_thread_bindings ADD runtime_session_id text",
+          );
+        }
+        for (const table of [
+          "external_thread_bindings",
+          "external_thread_messages",
+        ]) {
+          if (
+            JSON.stringify(shape(db, table)) !==
+            JSON.stringify(shape(reference, table))
+          ) {
+            throw new Error(`External history schema drift detected: ${table}`);
+          }
+        }
+        for (const tag of upstreamTags) {
+          const migration = requireExpectedAppliedMigration(migrations, tag);
+          const violation = findAppliedMigrationHistoryViolation(
+            migration,
+            applied,
+            timestamps,
+          );
+          if (violation?.reason === "hash-mismatch")
+            throw new Error(`Migration hash mismatch: ${tag}`);
+          if (violation !== null) applyMigrationStatements(db, migration);
+        }
+        markMigrationApplied(db, external);
+      })
+      .immediate();
+  } finally {
+    reference.$client.close();
+  }
+}
+
 export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
   const migrationsFolder = resolveMigrationsFolder();
   const sqlite = db.$client;
@@ -1430,6 +1544,7 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
   }
   sqlite.pragma("foreign_keys = OFF");
   try {
+    reconcilePublishedExternalHistory(db, migrationsFolder);
     assertNoDuplicatePendingInteractionProviderRequests(db);
     applyDeferredDestructiveLegacyCleanup(db, migrationsFolder);
     skipEventLargeValuesRoundTripForInlineEvents(db, migrationsFolder);

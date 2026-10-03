@@ -1,4 +1,4 @@
-import path from "node:path";
+import { getProjectPathValidationMessage, normalizeHostPath } from "@bb/domain";
 import {
   createEnvironment,
   findProjectEnvironmentByHostPath,
@@ -43,16 +43,18 @@ function sourceTarget(
       "Project source changed; refresh the local-path source before ensuring its checkout",
     );
   if (
-    !path.posix.isAbsolute(source.path) ||
-    source.path.includes("\0") ||
-    path.posix.resolve(source.path) === "/"
+    getProjectPathValidationMessage(source.path) !== null ||
+    source.path.includes("\0")
   )
     throw new ApiError(
       400,
       "invalid_request",
       "Source must name an absolute project directory",
     );
-  return { source, path: path.posix.resolve(source.path) };
+  const normalizedPath = normalizeHostPath(source.path);
+  if (normalizedPath === null)
+    throw new ApiError(400, "invalid_request", "Invalid project path");
+  return { source, path: normalizedPath };
 }
 
 function admitPath(

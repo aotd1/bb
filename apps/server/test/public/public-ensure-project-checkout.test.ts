@@ -79,7 +79,7 @@ describe("ensure project checkout without a turn", () => {
       const f = fixture(harness);
       const notified = vi.spyOn(harness.hub, "notifyEnvironment");
       const sdk = createNodeBbSdk({
-        baseUrl: "http://bb.test",
+        baseUrl: "http://localhost",
         fetch: async (input, init) =>
           harness.app.request(new Request(input, init)),
       });
@@ -361,6 +361,30 @@ describe("ensure project checkout without a turn", () => {
       await inspect(harness, "/tmp/canonical");
       expect((await second).status).toBe(409);
       expect(harness.db.select().from(environments).all()).toHaveLength(2);
+    });
+  });
+
+  it("ensures Windows drive-letter project checkouts with host path normalization", async () => {
+    await withTestHarness(async (harness) => {
+      const f = fixture(harness);
+      const sourcePath = "C:\\Users\\developer\\repo";
+      harness.db
+        .update(projectSources)
+        .set({ path: sourcePath })
+        .where(eq(projectSources.id, f.source.id))
+        .run();
+      const response = post(harness, {
+        ...f.args,
+        expectedSourcePath: sourcePath,
+      });
+      await inspect(harness, sourcePath);
+      expect((await response).status).toBe(200);
+      expect(await (await response).json()).toMatchObject({
+        created: true,
+        environment: { path: sourcePath, managed: false },
+      });
+      expect(harness.db.select().from(threads).all()).toEqual([]);
+      expect(harness.db.select().from(events).all()).toEqual([]);
     });
   });
 

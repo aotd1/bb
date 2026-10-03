@@ -431,7 +431,7 @@ describe("external history import", () => {
         hostId: host.id,
       });
       const sdk = createNodeBbSdk({
-        baseUrl: "http://test",
+        baseUrl: "http://localhost",
         fetch: async (request, init) => harness.app.request(request, init),
       });
       const store = memoryStore();

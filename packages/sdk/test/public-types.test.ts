@@ -243,6 +243,7 @@ type ExpectedBbSdkKey =
 type ExpectedRealtimeKey = "subscribe";
 
 type ExpectedEnvironmentsKey =
+  | "experimental_ensureProjectCheckout"
   | "experimental_cleanup"
   | "archiveThreads"
   | "commit"

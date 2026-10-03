@@ -5,7 +5,7 @@
   "type": "module",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.11 <0.7"
+    "bbPluginSdk": ">=0.6.16 <0.7"
   },
   "bb": {
     "name": "Echo provider",

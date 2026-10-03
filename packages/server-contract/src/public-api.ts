@@ -16,7 +16,6 @@ import {
   type ExperimentalImportHistoryRequest,
   type ExperimentalImportHistoryResponse,
 } from "./api/external-history.js";
-import { androidAppPrepareRequestSchema } from "./api/system.js";
 import {
   machineEnvironmentSetSchema,
   machineEnvironmentDeleteSchema,
