@@ -24,6 +24,7 @@ export interface CreateEnvironmentInput {
   hostId: string;
   path?: string | null;
   isGitRepo?: boolean;
+  isWorktree?: boolean;
   branchName?: string | null;
   baseBranch?: string | null;
   defaultBranch?: string | null;
@@ -54,6 +55,7 @@ export function createEnvironment(
       hostId: input.hostId,
       path: input.path ?? null,
       isGitRepo: input.isGitRepo ?? false,
+      isWorktree: input.isWorktree ?? false,
       branchName: input.branchName ?? null,
       baseBranch: input.baseBranch ?? null,
       defaultBranch: input.defaultBranch ?? null,

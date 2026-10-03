@@ -1,4 +1,5 @@
 import { operationEnvironment } from "./operation-environment.js";
+import { inspectHostWorkspace } from "./command-handlers/inspect-workspace.js";
 import {
   runEnvironmentHook,
   cancelEnvironmentHook,
@@ -624,6 +625,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.move_path": moveHostPath,
   "host.remove_path": removeHostPath,
   "host.browse_directory": browseHostDirectory,
+  "host.inspect_workspace": inspectHostWorkspace,
   "host.paths_exist": checkHostPathsExist,
   "project.inspect": async (command, options) =>
     inspectProjectPath(

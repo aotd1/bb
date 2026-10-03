@@ -44,7 +44,7 @@ own settings that produce registrations at runtime.
 
 ```ts
 bb.providers.register({
-  id: "claude-code",             // flat; first registration wins; no reservation
+  id: "claude-code",             // flat; first registration wins; external-history is reserved
   displayName: "Claude Code",
   family: undefined,             // optional grouping key (the ACP agents share one)
   icon: "./icons/claude.svg",    // a plugin SVG, served as logoUrl; a glyph name; or "<pluginId>/<name>"

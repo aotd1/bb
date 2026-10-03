@@ -972,6 +972,12 @@ export function settleTurnSubmitCommandResult(
 }
 
 export function ensureThreadCanStartRequest(thread: Thread): void {
+  if (thread.providerId === "external-history")
+    throw new ApiError(
+      409,
+      "external_history_read_only",
+      "External history threads cannot run turns",
+    );
   if (isPreStartThreadStatus(thread.status)) {
     throwThreadNotWritable(
       thread,
@@ -2218,4 +2224,25 @@ export async function reconcileDaemonReportedThreads(
     });
     clearThreadProvisionSchedule(thread.id);
   }
+}
+
+export async function releaseIdleThreadRuntime(
+  deps: RequestThreadStopForCurrentStateDeps,
+  thread: RequestThreadStopForCurrentStateThread,
+  environment: RequestThreadStopForCurrentStateEnvironment,
+): Promise<void> {
+  const released = await runAwaitedThreadStopCommand(deps, {
+    command: buildThreadStopCommand({
+      ...manualThreadStopArgs(thread.id, environment),
+      intent: "release",
+    }),
+    hostId: environment.hostId,
+  });
+  if (released.failure !== null) throw released.failure.error;
+  if (released.result?.activeTurnRetained === true)
+    throw new ApiError(
+      409,
+      "external_history_conflict",
+      "Provider has an active turn; session was retained",
+    );
 }

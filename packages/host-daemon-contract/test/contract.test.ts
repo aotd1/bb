@@ -337,6 +337,13 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       { name: "bb-cli", path: "/home/user/.agents/skills/bb-cli" },
     ],
   },
+  "host.inspect_workspace": {
+    path: "/tmp/project",
+    isGitRepo: true,
+    isWorktree: false,
+    branchName: "main",
+    defaultBranch: "main",
+  },
   "host.inspect_git_source": {
     checkout: {
       kind: "branch",
@@ -1187,7 +1194,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(227);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(228);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

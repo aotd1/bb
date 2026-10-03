@@ -128,6 +128,21 @@ Read the installed declarations for exact current signatures.
 - `PluginAppSetup`
 - `PluginAppSlots`
 - `PluginBackground`
+- `ExperimentalImportHistoryRequest` — general SDK/HTTP import batch; plugin SDK binds the owner ID
+- `ExternalHistoryItem` — bounded terminal archive item
+- `ExperimentalBindExternalSessionRequest`
+- `ExperimentalReleaseExternalSessionRequest`
+- `ExperimentalFindExternalThreadRequest`
+- `ExperimentalFindExternalThreadResponse`
+- `ExperimentalExternalSessionResponse`
+- `PluginBbSdk.environments.experimental_ensureProjectCheckout` — idempotent ready checkout preparation without a runtime/turn; see the Ensure project checkout Plugin Guide card
+- `ExperimentalEnsureProjectCheckoutRequest` — project/host and expected source ID/path
+- `ExperimentalEnsureProjectCheckoutResponse` — environment DTO and created flag
+- `PluginBbSdk.threads.experimental_bindExternalSession` — validated session binding without model launch
+- `PluginBbSdk.threads.experimental_releaseExternalSession` — release an idle runtime, preserve history
+- `PluginBbSdk.threads.experimental_findExternalThread` — read the owning plugin's identity/cursor
+- `ExperimentalImportHistoryResponse` — thread identity, replay counts, and import cursor
+- `PluginBbSdk.threads.experimental_importHistory` — atomic finalized messages/turns, uploaded attachments, verified legacy adoption; see the External thread history Plugin Guide card
 - `PluginBbSdk` — `bb.sdk`; thread plugin metadata calls default `pluginId`
   (see backend-sdk.md)
 - `PluginCli`
@@ -225,6 +240,7 @@ Read the installed declarations for exact current signatures.
 - `PluginProviderNativeRoots`
 - `PluginProviderOptionDescriptor`
 - `PluginProviderOptionsContext`
+- `PluginProviderOptionsContext.experimental_externalSession` — source session and runtime handle for a bound external thread; forward selected IDs through providerOptions
 - `PluginProviderPermissionMode`
 - `PluginProviderReasoningLevel`
 - `PluginProviderStrings`

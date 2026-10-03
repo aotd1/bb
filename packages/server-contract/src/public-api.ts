@@ -1,4 +1,22 @@
 import {
+  experimentalEnsureProjectCheckoutRequestSchema,
+  type ExperimentalEnsureProjectCheckoutRequest,
+  type ExperimentalEnsureProjectCheckoutResponse,
+} from "./api/environments.js";
+import {
+  experimentalImportHistoryRequestSchema,
+  experimentalBindExternalSessionRequestSchema,
+  experimentalExternalSessionRequestSchema,
+  externalThreadIdentitySchema,
+  type ExperimentalBindExternalSessionRequest,
+  type ExperimentalReleaseExternalSessionRequest,
+  type ExperimentalFindExternalThreadRequest,
+  type ExperimentalFindExternalThreadResponse,
+  type ExperimentalExternalSessionResponse,
+  type ExperimentalImportHistoryRequest,
+  type ExperimentalImportHistoryResponse,
+} from "./api/external-history.js";
+import {
   machineEnvironmentSetSchema,
   machineEnvironmentDeleteSchema,
   type MachineEnvironmentSet,
@@ -1098,6 +1116,15 @@ export const publicApiRoutes = {
   },
 
   environments: {
+    experimental_ensureProjectCheckout: defineRoute({
+      path: "/environments/experimental-ensure-project-checkout",
+      method: "post",
+      request: jsonRequest<
+        EmptyInput,
+        ExperimentalEnsureProjectCheckoutRequest
+      >(experimentalEnsureProjectCheckoutRequestSchema),
+      response: jsonResponse<ExperimentalEnsureProjectCheckoutResponse>(),
+    }),
     cleanup: defineRoute({
       path: "/environments/:id/cleanup",
       method: "post",
@@ -1277,6 +1304,39 @@ export const publicApiRoutes = {
   },
 
   threads: {
+    experimental_findExternalThread: defineRoute({
+      path: "/threads/experimental-find-external-thread",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalFindExternalThreadRequest>(
+        externalThreadIdentitySchema,
+      ),
+      response: jsonResponse<ExperimentalFindExternalThreadResponse>(),
+    }),
+    experimental_releaseExternalSession: defineRoute({
+      path: "/threads/experimental-release-external-session",
+      method: "post",
+      request: jsonRequest<
+        EmptyInput,
+        ExperimentalReleaseExternalSessionRequest
+      >(experimentalExternalSessionRequestSchema),
+      response: jsonResponse<ExperimentalExternalSessionResponse>(),
+    }),
+    experimental_bindExternalSession: defineRoute({
+      path: "/threads/experimental-bind-external-session",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalBindExternalSessionRequest>(
+        experimentalBindExternalSessionRequestSchema,
+      ),
+      response: jsonResponse<ExperimentalExternalSessionResponse>(),
+    }),
+    experimental_importHistory: defineRoute({
+      path: "/threads/experimental-import-history",
+      method: "post",
+      request: jsonRequest<EmptyInput, ExperimentalImportHistoryRequest>(
+        experimentalImportHistoryRequestSchema,
+      ),
+      response: jsonResponse<ExperimentalImportHistoryResponse>(),
+    }),
     list: defineRoute({
       path: "/threads",
       method: "get",

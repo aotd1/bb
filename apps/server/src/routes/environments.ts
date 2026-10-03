@@ -1,5 +1,6 @@
 import { joinHostPathSegments } from "../services/lib/host-path.js";
 import { cleanupEnvironment } from "../services/environments/environment-engine.js";
+import { ensureProjectCheckout } from "../services/environments/ensure-project-checkout.js";
 import { parsePaginationQuery } from "../services/lib/validation.js";
 import {
   countLiveThreadsInEnvironment,
@@ -285,6 +286,9 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.environments;
+  post(routes.experimental_ensureProjectCheckout, async (context, payload) =>
+    context.json(await ensureProjectCheckout(deps, payload)),
+  );
   post(routes.cleanup, (context) => {
     const environment = requireEnvironment(deps.db, context.req.param("id"));
     if (

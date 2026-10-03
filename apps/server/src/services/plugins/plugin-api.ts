@@ -357,6 +357,27 @@ function wrapSdkForPlugin(
     },
     threads: {
       ...sdk.threads,
+      experimental_bindExternalSession(args) {
+        return sdk.threads.experimental_bindExternalSession({
+          ...args,
+          pluginId,
+        });
+      },
+      experimental_releaseExternalSession(args) {
+        return sdk.threads.experimental_releaseExternalSession({
+          ...args,
+          pluginId,
+        });
+      },
+      experimental_findExternalThread(args) {
+        return sdk.threads.experimental_findExternalThread({
+          ...args,
+          pluginId,
+        });
+      },
+      experimental_importHistory(args) {
+        return sdk.threads.experimental_importHistory({ ...args, pluginId });
+      },
       async getPluginMetadata(
         args: Omit<ThreadPluginMetadataArgs, "pluginId"> & {
           pluginId?: string;

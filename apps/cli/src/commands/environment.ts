@@ -334,6 +334,47 @@ export function registerEnvironmentCommands(
     .description("Inspect and operate on first-class environments");
 
   environment
+    .command("ensure-project-checkout")
+    .description(
+      "Ensure a ready environment for an existing project checkout without starting a turn (experimental)",
+    )
+    .requiredOption("--project <id>", "Project id")
+    .requiredOption("--host <id>", "Existing host id")
+    .requiredOption(
+      "--expected-source-id <id>",
+      "Expected local-path source id",
+    )
+    .requiredOption(
+      "--expected-source-path <path>",
+      "Expected source path, exactly as recorded",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (opts: {
+          project: string;
+          host: string;
+          expectedSourceId: string;
+          expectedSourcePath: string;
+          json?: boolean;
+        }) => {
+          const result = await createCliBbSdk(
+            getUrl(),
+          ).environments.experimental_ensureProjectCheckout({
+            projectId: opts.project,
+            hostId: opts.host,
+            expectedSourceId: opts.expectedSourceId,
+            expectedSourcePath: opts.expectedSourcePath,
+          });
+          if (!outputJson(opts, result))
+            console.log(
+              `${result.created ? "Created" : "Reused"} ready environment ${result.environment.id} at ${result.environment.path}`,
+            );
+        },
+      ),
+    );
+
+  environment
     .command("cleanup <id>")
     .description("Clean up an unused provider-managed environment")
     .option("--json", "Print machine-readable JSON output")

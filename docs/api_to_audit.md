@@ -3665,6 +3665,263 @@ this placement with normal and scheduled creation. Audit pinned groups, custom s
 route transitions, draft recovery, and third-party sidebar compatibility
 before stabilizing this option.
 
+## `bb.sdk.environments.experimental_ensureProjectCheckout`
+
+Ensures a shared ready environment for an existing `local_path` project source
+on an explicitly selected host. Available through the general/Plugin SDK,
+`POST /api/v1/environments/experimental-ensure-project-checkout`, and
+`bb environment ensure-project-checkout`. Plugin SDK floor: 0.6.16; daemon
+protocol 228 adds the read-only `host.inspect_workspace` primitive.
+
+Request: `{projectId, hostId, expectedSourceId, expectedSourcePath}`. All fields
+are required and bounded; unknown fields are rejected. Read the source from
+`sdk.projects.get(...).sources`; the path precondition must match its recorded
+value exactly. Public project/host admission applies. Only an active existing
+host and an absolute existing directory other than `/` are accepted. The daemon
+resolves symlinks and reads Git metadata without creating an AgentRuntime or
+provider process. There is no prompt, clone, worktree creation, branch change,
+setup hook, arbitrary path selection, or thread attachment.
+
+The server revalidates source ID/path/update timestamp and host/project state
+after inspection, then admits both supplied and canonical paths in one immediate
+transaction. Foreign managed directories and active preparation/cleanup claims
+are refused. Existing environments at either alias must agree and be ready,
+unowned, and outside retirement/teardown. Reuse does not change metadata,
+lifecycle, timestamps, or emit notifications. Concurrent successful calls return
+the same environment ID; exactly one reports `created: true`. No row is created
+before host inspection, so its failure or failed CAS leaves no new environment.
+Standard admission may release stale preparation claims as it does elsewhere.
+
+Response: `{environment, created}` with the ordinary Environment DTO. New rows
+are unmanaged shared project checkouts, with no environment-provider resource or
+automatic provider retirement policy. Core emits `environment-created` after
+commit. Later bind performs its own settled-thread/source-generation/session and
+environment/host/ownership checks; ensure is not a reservation or proof that a
+future send will succeed. Deleted directories, checkout changes, and source
+changes after this operation are not repaired automatically. Read lifecycle via
+`environment.lifecycle`; raw `ownerThreadId` remains private.
+
+No database schema change is required. General environment-provider provisioning,
+missing checkout cloning, owned resource restoration and thread-specific
+workspace creation are outside this surface. Stabilization requires review of
+shared checkout lifecycle, canonical path/alias behavior, source CAS, concurrent
+admission and rollback/daemon compatibility. Focused tests cover the empty-project
+import → ensure → bind scenario without turn/model work, replay/concurrency,
+metadata/notification preservation, lifecycle/foreign path conflicts, malformed
+requests and source/project/host races.
+
+## `bb.sdk.threads.experimental_importHistory`
+
+`POST /api/v1/threads/experimental-import-history` imports finalized history
+without any provider/runtime dispatch. The owning plugin ID is forced by the
+Plugin SDK; general SDK/CLI callers specify it explicitly. Ordinary origin/access
+checks and public project/thread lookup apply. No raw SQL or canonical event
+envelopes are accepted. CLI: `bb thread import-history --file batch.json --json`.
+
+Identity is `(projectId, pluginId, sourceId, conversationId)`. Source `providerId`
+is immutable; `sessionId` can change only with a higher connector-chosen
+`generation`. New threads use reserved execution provider `external-history`,
+idle status and no environment. `threadId` asserts an existing binding.
+`initialTitle`, `initialSourceTitle` (stored as the ordinary searchable title
+fallback), `initialPluginMetadata`, `initialCreatedAt`, `initialUpdatedAt` seed
+creation only. Later batches can set `activityAt`, advancing activity monotonically
+without changing source message times. It must not precede thread creation.
+Metadata remains in the plugin namespace and is never sent to a model.
+
+`messages` contains `{id, order, role: user|assistant, text, createdAt}`. User
+messages may include at most 32 `attachments: [{type: localImage|localFile, path}]`;
+use only canonical project attachment upload paths. Arbitrary filesystem paths,
+remote image URLs and cross-project/unready/deletion-claimed attachments are
+rejected. User input can have empty text when attachments exist. Each message
+becomes one server-minted completed archival turn; user items project with the
+external-history user-role marker. Source time/order survives unchanged.
+
+Optional `turns` contains whole finalized source turns:
+`{id, order, createdAt, completedAt, status: completed|failed|interrupted,
+items: [{createdAt, item}]}`. Item times must fall within turn bounds. Supported
+strict semantic `item.type` shapes are:
+
+- `user`: text and optional uploaded attachments; `assistant` / `plan`: text.
+- `reasoning`: bounded summary/content string arrays.
+- `tool`: name, optional server/JSON arguments/result/string error, terminal status.
+- `command`: command, cwd, output, optional integer exitCode, terminal status.
+- `fileChange`: bounded path/kind/movePath/diff records, terminal status.
+
+The server translates these into canonical completed items and owns all event,
+turn and item IDs. Command/file-change records are archival descriptions and
+execute nothing. No provider/system events, streaming patches, approvals,
+extensions, arbitrary canonical items or partially complete turns are accepted.
+Whole turns cannot span batches or be extended after import; collect terminal
+items first. Specialized provider items outside this whitelist need a deliberate
+adapter conversion or a further typed contract, not a raw JSON escape hatch.
+
+IDs/orders are shared between messages and turns. Each lane is strictly ordered,
+then merged by order; IDs and orders are unique across the batch. Orders are
+nonnegative safe integers; timestamps are nonnegative integer Unix milliseconds
+through the JavaScript date limit. Identity/entry IDs are at most 512 characters,
+each text at most 128,000 characters, a source title at most 4096. At most 500
+terminal items total and 1 MiB UTF-8 JSON per batch; metadata also caps at 256 KiB.
+HTTP admission returns 413; invalid shape/semantics returns 400. Larger history
+uses separate atomic requests. Initial history must arrive oldest-first.
+
+Exact IDs compare immutable payload, order, source time and session identity.
+Replays skip without events, unread or realtime changes. Changed messages/turns,
+new entries behind the cursor and stale generations return 409
+`external_history_conflict`. A higher generation retains old events/dedupe and
+resets the order cursor; reset may be committed with an empty batch. Source
+compaction, a truncated window or a stale Gateway cursor is not a session reset.
+Interactive threads must release their provider session before generation change.
+
+`adoptThreadId` explicitly claims a legacy ordinary thread in the same project,
+with matching execution provider and an owned stored source session. It must have
+no external binding to another identity. Every adopted item references an
+`existingSequence`; the server verifies same-thread event type, terminal
+content/attachments and timestamp before recording the external ID/cursor.
+No events, title/time/metadata seeds or unread markers are rewritten. Existing
+sequences identify completed items or outbound user request records only. An
+archived thread can be adopted/indexed only through existing references; it
+cannot receive new events. Unsupported/invalid legacy items return 409 and need
+separate repair before adoption (including known old nullable tool errors).
+
+On an existing bound thread, `existingSequence` can also acknowledge a reply
+already recorded through BB's provider runtime. Optional `existingCreatedAt`
+asserts that canonical event's timestamp when it differs from the Gateway
+message's `createdAt`; it requires a sequence. Source time is retained in the
+immutable external fingerprint and canonical BB time is unchanged. All items
+of a turn must be existing references or all new. Replays with references must
+point to the original sequence and still match content/time. The connector owns
+BB request/run/message mapping; core never guesses by text or silently removes
+runtime rows. Acknowledgements update dedupe/cursor but append no events and
+create no unread/realtime changes. `inserted` counts new external ID records,
+including acknowledgements; `skipped` counts prior IDs, not canonical events.
+
+Import accepts only settled idle/error threads and rejects active threads, unfinished canonical turns, queued work,
+concurrent send/context mutations and archived new history. A bound interactive
+thread must still own its explicitly bound runtime provider/session; divergent BB `/clear` or
+provider identities require explicit release/reconciliation. `attention: preserve`
+keeps read state; `unread` advances arrival-time attention only for new canonical
+history. Soft-deleted threads return 404; permanent deletion cascades bindings.
+Connectors must remember user deletion rather than automatically recreate threads.
+
+One immediate SQLite transaction covers thread/binding/dedupe/cursor, source time
+seeds, canonical events, search, uploaded attachment ownership and attention.
+Notifications and `thread.created` hooks run after commit only. Import fabricates
+no runtime completion hook or outbound request. Result is
+`{threadId, created, inserted, skipped, generation, lastOrder}`. Pure legacy
+adoption/acknowledgement does not announce event changes. The session-binding extension adds nullable runtime provider/handle columns only
+to the external binding table; existing vanilla tables remain unchanged.
+
+Before stabilization: audit connector identity/reset and pagination semantics,
+legacy adoption and nullable-item repair, cross-lane BB/Gateway message mapping,
+retention/deletion, edits/backfill, source title fallback, large output recovery,
+attachment ownership and transaction/realtime guarantees. Prove import never
+starts a runtime and never invents history missing from the source.
+
+### Rebase onto BB 0.45.0 and database compatibility
+
+BB 0.45.0 uses upstream migrations 0136 and 0137. External history now adds
+0138, generated against that release, containing only the two external tables
+and their indexes. The SQL is replay-safe for existing tables; the generated
+snapshot is unchanged by hand. Vanilla tables receive only the release's own
+schema changes. `experimental_ensureProjectCheckout` still adds no schema.
+
+Previously installed PR builds used 0136_external_history and
+0137_external_session_handles at different timestamps. Core recognizes only
+those exact published SQL hashes, validates all earlier migration identities,
+and compares external columns, keys and indexes against the new generated
+schema. One immediate transaction adds missing nullable handle columns,
+applies any skipped upstream 0.45 migrations and records 0138 without copying,
+renaming or deleting history. Unknown hashes, schema drift and failed ledger
+writes abort the upgrade. The old ledger rows remain; migration numbers alone
+never establish compatibility.
+
+An isolated test with the exact vanilla 0.45.0 source verifies migration,
+ordinary thread writes and return to this branch while preserving canonical
+history, bindings and dedupe. Vanilla does not expose this PR's experimental
+APIs. This is a schema compatibility check, not a live plugin or provider E2E.
+
+## `bb.sdk.threads.experimental_findExternalThread`
+
+`POST /api/v1/threads/experimental-find-external-thread` takes the four binding
+key fields and returns `{binding: null | {threadId, providerId, sessionId,
+generation, lastOrder, mode: passive|interactive, runtimeProviderId, runtimeProviderThreadId,
+environmentId, archived}}`. Plugin SDK forces its owner. Lookup is read-only,
+works on archived bindings, rejects soft-deleted threads and does not recreate
+or notify. CLI: `bb thread find-external-thread --file key.json --json`.
+Before stabilization: audit source discovery, access and deletion semantics.
+
+## `bb.sdk.threads.experimental_bindExternalSession`
+
+`POST /api/v1/threads/experimental-bind-external-session` takes `{pluginId,
+threadId, expectedGeneration, expectedSessionId, providerId, environmentId,
+providerThreadId}`. Plugin SDK forces its owner. Requires this plugin's binding,
+matching generation/session, settled idle/error and unarchived status, no active stored turn, queued
+work, pending interaction or in-flight context/send mutation. Provider must be
+registered, enabled and have a host artifact. Environment must be ready in the
+same project, on an active host, with no teardown or foreign preparation owner.
+`providerThreadId` is the explicit opaque runtime resume handle and may differ
+from source `sessionId` (for example a stable Gateway session key versus a physical
+session UUID). The binding persists both separately. Source identity and execution
+provider ID can also differ only through this explicit choice, never a default.
+
+The transaction switches execution provider/environment, cancels pending
+retirement and appends the ordinary runtime `thread/identity` claim. Other threads' provider/session claims in that host scope reject atomically. An exact
+repeat is a no-op; another target requires release first. Result:
+`{threadId, changed, mode: interactive}`. Notifications use core thread/environment
+projections. Binding sends no host command and launches no runtime/model. A later
+ordinary `send` prepares `turn.submit` with the imported provider session, so a
+cold daemon performs `thread/resume` before `turn/start`, instead of starting a
+new provider session. The bridge must fail explicitly if its source session is
+missing; it must not create a replacement silently.
+
+CLI: `bb thread bind-external-session --file binding.json --json`.
+Before stabilization: audit provider/host trust, ownership, concurrent mutations,
+missing sessions and restart recovery with third-party bridges.
+
+## `PluginProviderOptionsContext.experimental_externalSession`
+
+Optional server-side context for a bound external thread, supplied to
+`deriveProviderOptions` on session/turn commands: readonly `{sourceId,
+conversationId, sourceProviderId, sessionId, generation, providerThreadId}`.
+It is absent for ordinary/passive threads. The resolver can forward selected
+IDs through its existing provider-specific `providerOptions`; core does not
+inject new wire keys into bridges that do not opt in. This lets an OpenClaw
+bridge receive both the Gateway resume/session key and expected physical
+session UUID, and reject replacement before sending. No metadata or secrets
+are added. First-party providers may ignore this optional context unchanged.
+Before stabilization: audit reset races, resolver ownership, identity privacy
+and compatibility with providers that ignore the field.
+
+## `bb.sdk.threads.experimental_releaseExternalSession`
+
+`POST /api/v1/threads/experimental-release-external-session` takes `{pluginId,
+threadId, expectedGeneration, expectedSessionId}` with the same owning-binding,
+settled idle/error, queue and interaction guards. It holds the context mutation guard while awaiting
+only a daemon `thread.stop` with intent `release`. Failure or an active retained
+provider turn preserves the binding and returns an error; no interrupt command
+is sent. Only a confirmed release detaches environment and restores execution
+provider `external-history`. All history, identities, dedupe and source metadata
+remain. A passive repeat is a no-op. Result `{threadId, changed, mode: passive}`.
+Release does not clear/hide context, archive the source or run a model.
+
+For source reset: release, import a higher generation/new session, then explicitly
+bind that session. For rebinding another host/provider: release, then bind the
+existing source session. Do not equate compaction with reset. CLI:
+`bb thread release-external-session --file identity.json --json`.
+Before stabilization: audit external-turn races, offline hosts, cancellation,
+restart recovery and environment retirement after detachment.
+
+These additions use the existing bridge contract. The published conformance kit
+still checks resume identity, turn grammar and idle release. No bridge method,
+capability, grammar version or server/daemon wire field changes. A future OpenClaw
+plugin combines finalized snapshot/live import, explicit session binding and its
+own registered host bridge; core API alone does not connect a Gateway or call
+`chat.send`. The bridge's `thread/resume` establishes the source session, and
+`turn/start` sends only the explicit BB prompt. Observe session events before the
+snapshot, reconcile on reconnect, exclude/acknowledge BB-owned runs, and import
+other finalized source messages only after BB settles. Full Telegram history,
+secret access and Gateway-version-specific RPCs are outside this core contract.
+
 ### Provider discovery metadata
 
 `package.json` → `bb.experimental_providers` statically declares

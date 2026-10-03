@@ -411,3 +411,9 @@ describe("provider declaration fields renamed in SDK 0.4.16", () => {
     );
   });
 });
+
+it("reserves the passive history provider so plugins cannot turn it into a runtime", () => {
+  expect(() =>
+    validatePluginProviderDeclaration(declaration({ id: "external-history" })),
+  ).toThrow("reserved for passive");
+});

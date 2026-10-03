@@ -9,6 +9,36 @@ Thread commands
 
 Every command supports --json for machine-readable output.
 
+Importing external history (experimental):
+
+  bb thread import-history --file <batch.json|-> [--json]
+
+    Reads POST /api/v1/threads/experimental-import-history JSON: projectId,
+    pluginId, sourceId, conversationId, providerId, sessionId, generation,
+    messages [{id, order, role: user|assistant, text, createdAt}], and optional
+    completed turns with typed archive items. Uploaded user attachments are supported.
+    Max 500 terminal items/1 MiB per transaction. Stable IDs/order; exact repeats skip;
+    edits and backfill before the cursor fail. Model execution never starts on import.
+    adoptThreadId plus verified existingSequence references adopts legacy history.
+    Initial creation/activity times and full searchable source title can be seeded.
+
+  bb thread find-external-thread --file <request.json|-> [--json]
+    Read {projectId, pluginId, sourceId, conversationId}; result {binding: null | ...}.
+
+  bb thread bind-external-session --file <request.json|-> [--json]
+    {pluginId, threadId, expectedGeneration, expectedSessionId, providerId,
+    environmentId, providerThreadId}. Requires a ready same-project environment
+    and registered bridge; providerThreadId is an explicit resume handle,
+    separate from source session identity.
+    Enables ordinary tell/send to resume that session, without starting it here.
+
+  bb thread release-external-session --file <request.json|-> [--json]
+    {pluginId, threadId, expectedGeneration, expectedSessionId}. Releases only idle
+    runtime; active work conflicts. Binding/history remain. Release before source reset,
+    import higher generation, then rebind. Compaction/truncation is not a reset.
+    Bind/release results: {threadId, changed, mode: passive|interactive}.
+    See the External thread history Plugin Guide card for the full contract.
+
 Spawning:
 
   bb thread spawn --project <id> --prompt "..." [options]

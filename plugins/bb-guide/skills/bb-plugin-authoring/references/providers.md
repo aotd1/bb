@@ -338,3 +338,17 @@ worker, because it is one artifact.
 Trust model: installation trust, exactly like every other plugin surface. A
 bridge runs only for an installed, enabled plugin, and only on hosts whose
 server instructs it.
+
+### Continuing imported conversations
+
+`bb.sdk.threads.experimental_bindExternalSession` supplies the original source
+identity separately from its explicit runtime resume handle. On a bound thread,
+`deriveProviderOptions` receives optional `ctx.experimental_externalSession`:
+`{sourceId, conversationId, sourceProviderId, sessionId, generation, providerThreadId}`.
+Forward selected IDs through your bridge's existing `providerOptions`; for
+OpenClaw this can carry both a Gateway session key and the expected physical
+session UUID. A replaced/missing source must fail explicitly rather than silently
+start another session. Binding itself dispatches no runtime work; an ordinary BB
+send resumes first, then starts its turn. Import non-BB finalized messages only
+when settled and acknowledge already-recorded BB runs through verified sequences.
+See the External thread history Plugin Guide card for import/release/reset policy.

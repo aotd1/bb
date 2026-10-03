@@ -193,10 +193,16 @@ and no open terminals; empty machines can use an opted-in provider idle policy.
 
 `bb thread context` reads recorded context usage without sending a model request. A breakdown is optional; absent usage is returned as `null`.
 
+`bb environment ensure-project-checkout --project ID --host ID --expected-source-id ID --expected-source-path PATH --json` validates an existing local-path source and ensures a shared ready environment without a runtime, turn, setup hook or checkout mutation (experimental). Read the exact source ID/path from `bb project show ID --json`; stale preconditions or an owned/preparing/retiring/teardown workspace are refused. It returns `{ environment, created }`; it does not attach a thread. Use the resulting environment ID when binding imported history.
+
 `bb machine reconcile <id-or-name> [--json]` asks core to enforce its recorded
 suspended state through the provider and waits for completion. It leaves active
 machines and in-progress lifecycle operations alone. Use `machine suspend` to
 request a new pause. Core does not schedule reconciliation polling.
+
+`bb thread import-history --file <batch.json|-> [--json]` atomically creates or
+continues a passive external conversation (experimental). It never starts a
+model. See `bb guide threads` for the bounded text batch and replay/reset rules.
 
 Provider management lives in Settings → Providers. Use `bb provider list --all`
 for the global catalog, `bb provider disable ID` to hide one provider and prevent

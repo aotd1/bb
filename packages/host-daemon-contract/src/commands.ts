@@ -589,6 +589,13 @@ const projectInspectCommandSchema = z
   })
   .strict();
 
+const hostInspectWorkspaceCommandSchema = z
+  .object({
+    type: z.literal("host.inspect_workspace"),
+    path: z.string().min(1).max(4096),
+  })
+  .strict();
+
 const projectCloneDefaultPathCommandSchema = z
   .object({
     type: z.literal("project.clone_default_path"),
@@ -1636,6 +1643,15 @@ export const hostDaemonCommandRegistry = {
     type: "project.inspect",
     schema: projectInspectCommandSchema,
     resultSchema: projectInspectResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.inspect_workspace": defineHostDaemonCommandDescriptor({
+    type: "host.inspect_workspace",
+    schema: hostInspectWorkspaceCommandSchema,
+    resultSchema: discoveredWorkspacePropertiesSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

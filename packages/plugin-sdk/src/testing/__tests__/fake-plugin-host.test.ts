@@ -1055,6 +1055,31 @@ describe("sdk", () => {
     ]);
   });
 
+  it("binds external history imports to the owning plugin before calling a stub", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "history-owner",
+      sdk: {
+        threads: {
+          experimental_importHistory: async () => ({ threadId: "imported" }),
+        },
+      },
+    });
+    const input = {
+      projectId: "p1",
+      pluginId: "another-plugin",
+      sourceId: "gateway",
+      conversationId: "topic",
+      providerId: "external",
+      sessionId: "session",
+      generation: 0,
+      messages: [],
+    };
+    await bb.sdk.threads.experimental_importHistory(input);
+    expect(
+      harness.inspection.sdk.callsTo("threads.experimental_importHistory"),
+    ).toEqual([[{ ...input, pluginId: "history-owner" }]]);
+  });
+
   it("defaults metadata targets, preserves explicit targets, and validates set before stubs", async () => {
     const invoked: unknown[] = [];
     const { bb, harness } = createFakePluginHost({

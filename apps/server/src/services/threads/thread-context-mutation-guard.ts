@@ -46,3 +46,12 @@ export async function withThreadContextClearGuard<T>(
 ): Promise<T> {
   return withThreadContextMutationGuard(threadId, "clear", work);
 }
+
+export function ensureThreadContextIsSettled(threadId: string): void {
+  if (inFlightByThreadId.has(threadId))
+    throw new ApiError(
+      409,
+      "external_history_conflict",
+      "Thread is processing another request",
+    );
+}

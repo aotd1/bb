@@ -1,4 +1,9 @@
-import { environments, hasStoredSpawnAgentToolCall, threads } from "@bb/db";
+import {
+  environments,
+  externalThreadBindings,
+  hasStoredSpawnAgentToolCall,
+  threads,
+} from "@bb/db";
 import { and, eq, isNull } from "drizzle-orm";
 import {
   PromptInput,
@@ -202,12 +207,32 @@ function toRuntimeExecutionOptions(
     input: args.input,
     providerId: args.providerId,
   });
+  const binding = args.deps.db
+    .select()
+    .from(externalThreadBindings)
+    .where(eq(externalThreadBindings.threadId, args.threadId))
+    .get();
+  const externalSession =
+    binding?.runtimeProviderId === args.providerId &&
+    binding.runtimeSessionId !== null
+      ? {
+          sourceId: binding.sourceId,
+          conversationId: binding.conversationId,
+          sourceProviderId: binding.providerId,
+          sessionId: binding.sessionId,
+          generation: binding.generation,
+          providerThreadId: binding.runtimeSessionId,
+        }
+      : undefined;
   const providerOptions =
     args.deps.providerRegistry.get(args.providerId)?.deriveProviderOptions({
       threadId: args.threadId,
       projectId: args.projectId,
       model: args.execution.model,
       permissionMode,
+      ...(externalSession === undefined
+        ? {}
+        : { experimental_externalSession: externalSession }),
       ...(promptMode !== undefined ? { promptMode } : {}),
     }) ?? {};
   const base = {

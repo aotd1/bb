@@ -114,6 +114,15 @@ function normalizeCallArgs(
   args: unknown[],
 ): unknown[] {
   switch (path) {
+    case "threads.experimental_bindExternalSession":
+    case "threads.experimental_releaseExternalSession":
+    case "threads.experimental_findExternalThread":
+    case "threads.experimental_importHistory": {
+      const [first, ...rest] = args;
+      return typeof first === "object" && first !== null
+        ? [{ ...first, pluginId }, ...rest]
+        : args;
+    }
     case "threads.spawn":
     case "threads.fork":
       return withThreadAttribution(pluginId, args);

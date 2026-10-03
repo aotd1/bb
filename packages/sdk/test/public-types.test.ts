@@ -243,6 +243,7 @@ type ExpectedBbSdkKey =
 type ExpectedRealtimeKey = "subscribe";
 
 type ExpectedEnvironmentsKey =
+  | "experimental_ensureProjectCheckout"
   | "experimental_cleanup"
   | "archiveThreads"
   | "commit"
@@ -389,6 +390,10 @@ type ExpectedThemeKey = "catalog" | "get" | "resolve" | "set";
 type ExpectedThreadSectionsKey = "create" | "delete" | "list" | "update";
 
 type ExpectedThreadsKey =
+  | "experimental_importHistory"
+  | "experimental_bindExternalSession"
+  | "experimental_releaseExternalSession"
+  | "experimental_findExternalThread"
   | "getPluginMetadata"
   | "updatePluginMetadata"
   | "context"

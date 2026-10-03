@@ -1353,6 +1353,15 @@ export interface PluginProviderExtensionKindDeclaration {
  * thread of this provider.
  */
 export interface PluginProviderOptionsContext {
+  /** Present only for a bound external thread. Forward selected identities through your own providerOptions so the bridge can verify the source session before sending. */
+  experimental_externalSession?: Readonly<{
+    sourceId: string;
+    conversationId: string;
+    sourceProviderId: string;
+    sessionId: string;
+    generation: number;
+    providerThreadId: string;
+  }>;
   threadId: string;
   projectId: string;
   /** The resolved model id for this command. */
@@ -2040,8 +2049,41 @@ export interface PluginStatusApi {
 export type PluginBbSdk = Omit<BbSdk, "threads"> & {
   threads: Omit<
     BbSdk["threads"],
-    "getPluginMetadata" | "updatePluginMetadata"
+    | "getPluginMetadata"
+    | "updatePluginMetadata"
+    | "experimental_importHistory"
+    | "experimental_bindExternalSession"
+    | "experimental_releaseExternalSession"
+    | "experimental_findExternalThread"
   > & {
+    /** Bind an imported thread to a registered provider session without starting a model. */
+    experimental_bindExternalSession(
+      args: Omit<
+        import("@bb/sdk").ExperimentalBindExternalSessionRequest,
+        "pluginId"
+      >,
+    ): Promise<import("@bb/sdk").ExperimentalExternalSessionResponse>;
+    /** Release an idle provider runtime, preserving imported history and identities. */
+    experimental_releaseExternalSession(
+      args: Omit<
+        import("@bb/sdk").ExperimentalReleaseExternalSessionRequest,
+        "pluginId"
+      >,
+    ): Promise<import("@bb/sdk").ExperimentalExternalSessionResponse>;
+    /** Read this plugin's external binding without importing or notifying. */
+    experimental_findExternalThread(
+      args: Omit<
+        import("@bb/sdk").ExperimentalFindExternalThreadRequest,
+        "pluginId"
+      >,
+    ): Promise<import("@bb/sdk").ExperimentalFindExternalThreadResponse>;
+    /** Atomically create or append finalized typed history without starting a runtime. The owner is always this plugin. */
+    experimental_importHistory(
+      args: Omit<
+        import("@bb/sdk").ExperimentalImportHistoryRequest,
+        "pluginId"
+      >,
+    ): Promise<import("@bb/sdk").ExperimentalImportHistoryResponse>;
     getPluginMetadata(
       args: Omit<ThreadPluginMetadataArgs, "pluginId"> & { pluginId?: string },
     ): Promise<ThreadPluginMetadataResult>;

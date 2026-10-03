@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { turnScope, type PromptTextMention } from "@bb/domain";
+import {
+  parseStoredThreadEvent,
+  turnScope,
+  type PromptTextMention,
+} from "@bb/domain";
 import {
   createTimelineEventFactory,
   decodeThreadEventRow,
@@ -8,6 +12,7 @@ import {
 import type { BuildEventProjectionMessagesOptions } from "../src/event-projection-types.js";
 import type { AcceptedClientRequest } from "../src/accepted-client-request-context.js";
 import {
+  parseProviderUserMessage,
   parsePromptInput,
   parseAcceptedSteersFromClientRequest,
   parsePendingSteersFromClientRequest,
@@ -561,5 +566,43 @@ describe("user message parsing", () => {
       text: "Fallback message",
       turnRequest: { isGrouped: false, kind: "message", status: "pending" },
     });
+  });
+});
+
+describe("imported user history projection", () => {
+  it("keeps legacy provider input semantics and renders server-imported input as conversation", () => {
+    for (const imported of [false, true]) {
+      const event = parseStoredThreadEvent({
+        type: "item/completed",
+        threadId: "thread-1",
+        scope: turnScope("turn-1"),
+        providerThreadId: "session-1",
+        data: {
+          providerThreadId: "session-1",
+          item: {
+            type: "userMessage",
+            id: "item-1",
+            content: [{ type: "text", text: "original input" }],
+            ...(imported ? { experimental_externalHistory: true } : {}),
+          },
+        },
+      });
+      expect(
+        parseProviderUserMessage(event, {
+          id: "event-1",
+          seq: 2,
+          createdAt: 1000,
+        }),
+      ).toMatchObject({
+        kind: "user",
+        text: "original input",
+        createdAt: 1000,
+        initiator: imported ? "user" : "system",
+        turnRequest: {
+          kind: imported ? "message" : "steer",
+          status: "accepted",
+        },
+      });
+    }
   });
 });
