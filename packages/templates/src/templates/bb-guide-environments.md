@@ -108,6 +108,16 @@ Making your repo work with bb:
                                           ready, error, destroyed (the only way to see
                                           destroyed rows)
     --limit <n> / --offset <n>            Page through the rows, oldest first
+  bb environment ensure-project-checkout  Ensure a shared ready environment for an existing
+                                          local-path source without a runtime/turn (experimental)
+    --project <id> --host <id>            Required project and existing machine IDs
+    --expected-source-id <id>             Required source ID from project show --json
+    --expected-source-path <path>         Required path exactly as recorded in that source
+    --json                               Return { environment, created }; repeats reuse the
+                                          ready environment without altering its metadata.
+                                          Changed sources, inactive hosts, owned/preparing/
+                                          retiring/teardown or foreign managed paths fail.
+                                          No clone, worktree, setup hook or session binding.
   bb environment delete <id>              Request provider cleanup; refused while threads are
                                           live or stopping. The command returns with cleanup
                                           requested; lifecycle becomes destroyed only after

@@ -10,6 +10,7 @@ import {
   pullRequestMergeActionResponseSchema,
   pullRequestReadyActionResponseSchema,
   updateEnvironmentRequestSchema,
+  experimentalEnsureProjectCheckoutRequestSchema,
 } from "@bb/server-contract";
 import type {
   CommitActionResponse,
@@ -34,8 +35,15 @@ import type {
   UpdateEnvironmentRequest,
   WorkspacePathListResponse,
   SystemEnvironmentProvider,
+  ExperimentalEnsureProjectCheckoutRequest,
+  ExperimentalEnsureProjectCheckoutResponse,
 } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
+
+export type {
+  ExperimentalEnsureProjectCheckoutRequest,
+  ExperimentalEnsureProjectCheckoutResponse,
+} from "@bb/server-contract";
 
 export interface EnvironmentActionArgs {
   environmentId: string;
@@ -155,6 +163,10 @@ export type EnvironmentListProvidersResult = SystemEnvironmentProvider[];
 const okResponseSchema = z.object({ ok: z.literal(true) });
 
 export interface EnvironmentsArea {
+  /** Validate an existing local-path project checkout and ensure a shared ready environment without a provider runtime, turn, setup hook, clone, or checkout mutation. Source identity/path are compare-and-set preconditions. */
+  experimental_ensureProjectCheckout(
+    args: ExperimentalEnsureProjectCheckoutRequest,
+  ): Promise<ExperimentalEnsureProjectCheckoutResponse>;
   experimental_cleanup(args: EnvironmentActionArgs): Promise<{ ok: true }>;
   archiveThreads(
     args: EnvironmentActionArgs,
@@ -279,6 +291,15 @@ export function createEnvironmentsArea(
 ): EnvironmentsArea {
   const { transport } = args;
   return {
+    async experimental_ensureProjectCheckout(input) {
+      return transport.readJson(
+        transport.api.v1.environments[
+          "experimental-ensure-project-checkout"
+        ].$post({
+          json: experimentalEnsureProjectCheckoutRequestSchema.parse(input),
+        }),
+      );
+    },
     async archiveThreads(input) {
       return transport.readJson(
         transport.api.v1.environments[":id"]["archive-threads"].$post({

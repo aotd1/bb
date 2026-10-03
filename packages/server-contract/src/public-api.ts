@@ -1,4 +1,9 @@
 import {
+  experimentalEnsureProjectCheckoutRequestSchema,
+  type ExperimentalEnsureProjectCheckoutRequest,
+  type ExperimentalEnsureProjectCheckoutResponse,
+} from "./api/environments.js";
+import {
   experimentalImportHistoryRequestSchema,
   experimentalBindExternalSessionRequestSchema,
   experimentalExternalSessionRequestSchema,
@@ -1112,6 +1117,15 @@ export const publicApiRoutes = {
   },
 
   environments: {
+    experimental_ensureProjectCheckout: defineRoute({
+      path: "/environments/experimental-ensure-project-checkout",
+      method: "post",
+      request: jsonRequest<
+        EmptyInput,
+        ExperimentalEnsureProjectCheckoutRequest
+      >(experimentalEnsureProjectCheckoutRequestSchema),
+      response: jsonResponse<ExperimentalEnsureProjectCheckoutResponse>(),
+    }),
     cleanup: defineRoute({
       path: "/environments/:id/cleanup",
       method: "post",

@@ -24,5 +24,7 @@ export type {
 export type {
   ExperimentalImportHistoryRequest,
   ExperimentalImportHistoryResponse,
+  ExperimentalEnsureProjectCheckoutRequest,
+  ExperimentalEnsureProjectCheckoutResponse,
 } from "@bb/sdk";
 export type * from "./machine-bootstrap.js";

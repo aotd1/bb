@@ -193,6 +193,8 @@ and no open terminals; empty machines can use an opted-in provider idle policy.
 
 `bb thread context` reads recorded context usage without sending a model request. A breakdown is optional; absent usage is returned as `null`.
 
+`bb environment ensure-project-checkout --project ID --host ID --expected-source-id ID --expected-source-path PATH --json` validates an existing local-path source and ensures a shared ready environment without a runtime, turn, setup hook or checkout mutation (experimental). Read the exact source ID/path from `bb project show ID --json`; stale preconditions or an owned/preparing/retiring/teardown workspace are refused. It returns `{ environment, created }`; it does not attach a thread. Use the resulting environment ID when binding imported history.
+
 `bb machine reconcile <id-or-name> [--json]` asks core to enforce its recorded
 suspended state through the provider and waits for completion. It leaves active
 machines and in-progress lifecycle operations alone. Use `machine suspend` to

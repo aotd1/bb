@@ -19,6 +19,22 @@ import {
 
 export const environmentNameSchema = z.string().trim().min(1).max(80);
 
+export const experimentalEnsureProjectCheckoutRequestSchema = z
+  .object({
+    projectId: z.string().min(1).max(128),
+    hostId: z.string().min(1).max(128),
+    expectedSourceId: z.string().min(1).max(128),
+    expectedSourcePath: z.string().min(1).max(4096),
+  })
+  .strict();
+export type ExperimentalEnsureProjectCheckoutRequest = z.infer<
+  typeof experimentalEnsureProjectCheckoutRequestSchema
+>;
+export interface ExperimentalEnsureProjectCheckoutResponse {
+  environment: import("@bb/domain").Environment;
+  created: boolean;
+}
+
 export const updateEnvironmentRequestSchema = z
   .object({
     mergeBaseBranch: gitBranchNameSchema.nullable(),

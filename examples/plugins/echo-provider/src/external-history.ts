@@ -1,5 +1,23 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 
+export async function ensureConversationCheckout(
+  bb: BbPluginApi,
+  target: { projectId: string; hostId: string },
+) {
+  const project = await bb.sdk.projects.get({ projectId: target.projectId });
+  const source = project.sources.find(
+    (source) => source.hostId === target.hostId,
+  );
+  if (source === undefined)
+    throw new Error("Project has no source on this host");
+  const ready = await bb.sdk.environments.experimental_ensureProjectCheckout({
+    ...target,
+    expectedSourceId: source.id,
+    expectedSourcePath: source.path,
+  });
+  return ready.environment.id;
+}
+
 export async function importAndBindConversation(
   bb: BbPluginApi,
   target: {

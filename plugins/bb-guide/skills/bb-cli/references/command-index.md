@@ -220,6 +220,7 @@ move and downloads the new server's bb-app package for its service.
 ## environment
 
 - `bb environment`
+- `bb environment ensure-project-checkout`
 - `bb environment providers`
 - `bb environment list`
 - `bb environment delete`

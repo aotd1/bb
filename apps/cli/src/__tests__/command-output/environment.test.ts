@@ -17,6 +17,48 @@ describe("bb environment command output", () => {
   const register: CommandRegistrar = (program) =>
     registerEnvironmentCommands(program, () => "http://server");
 
+  it("ensures a project checkout with explicit source preconditions", async () => {
+    const result = {
+      environment: fixtures.makeEnvironment({
+        id: "env-ready",
+        projectId: "proj-test",
+        hostId: "host-test",
+      }),
+      created: true,
+    };
+    const post = vi.fn(async () => result);
+    stubServerApi({
+      "v1.environments.experimental-ensure-project-checkout.$post": post,
+    });
+    await runCommand(
+      [
+        "environment",
+        "ensure-project-checkout",
+        "--project",
+        "proj-test",
+        "--host",
+        "host-test",
+        "--expected-source-id",
+        "source-test",
+        "--expected-source-path",
+        "/tmp/checkout",
+        "--json",
+      ],
+      register,
+    );
+    expect(post).toHaveBeenCalledExactlyOnceWith({
+      json: {
+        projectId: "proj-test",
+        hostId: "host-test",
+        expectedSourceId: "source-test",
+        expectedSourcePath: "/tmp/checkout",
+      },
+    });
+    expect(collectLogLines(vi.mocked(console.log))).toContain(
+      JSON.stringify(result, null, 2),
+    );
+  });
+
   const workspaceStatus: WorkspaceStatus = {
     workingTree: {
       state: "dirty_uncommitted",

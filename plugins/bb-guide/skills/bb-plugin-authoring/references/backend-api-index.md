@@ -135,6 +135,9 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalFindExternalThreadRequest`
 - `ExperimentalFindExternalThreadResponse`
 - `ExperimentalExternalSessionResponse`
+- `PluginBbSdk.environments.experimental_ensureProjectCheckout` — idempotent ready checkout preparation without a runtime/turn; see the Ensure project checkout Plugin Guide card
+- `ExperimentalEnsureProjectCheckoutRequest` — project/host and expected source ID/path
+- `ExperimentalEnsureProjectCheckoutResponse` — environment DTO and created flag
 - `PluginBbSdk.threads.experimental_bindExternalSession` — validated session binding without model launch
 - `PluginBbSdk.threads.experimental_releaseExternalSession` — release an idle runtime, preserve history
 - `PluginBbSdk.threads.experimental_findExternalThread` — read the owning plugin's identity/cursor
