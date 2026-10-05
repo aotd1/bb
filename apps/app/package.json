@@ -125,6 +125,7 @@
     "@vitejs/plugin-react": "^6.0.1",
     "babel-plugin-react-compiler": "^1.0.0",
     "cacache": "^20.0.4",
+    "fake-indexeddb": "^6.2.5",
     "lightningcss": "^1.32.0",
     "mdast-util-to-hast": "^13.2.1",
     "micromark-util-types": "^2.0.2",

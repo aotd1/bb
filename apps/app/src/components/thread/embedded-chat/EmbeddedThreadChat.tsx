@@ -778,6 +778,10 @@ function EmbeddedThreadChatWithComposer({
       getSelection,
       subscribeSelection,
       setDraft: setStoredPromptDraft,
+      attachmentDraftTarget: {
+        getCurrent: getStoredPromptDraft,
+        setDraft: setStoredPromptDraft,
+      },
       submit: (options, pluginSubmission) =>
         submitProgrammaticallyRef.current(options, pluginSubmission),
       focus: () => {

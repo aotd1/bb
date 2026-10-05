@@ -28,6 +28,7 @@ export interface PluginComposerHost {
   getSelection?(): ComposerSelection;
   subscribeSelection?(listener: () => void): () => void;
   setDraft(next: PromptDraftState): void;
+  attachmentDraftTarget?: Pick<PluginComposerHost, "getCurrent" | "setDraft">;
   isAvailable?(): boolean;
   focus(): void;
   submit?(
