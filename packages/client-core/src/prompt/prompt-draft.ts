@@ -3,13 +3,21 @@ import {
   type PromptInput,
   type PromptTextMention,
 } from "@bb/domain";
-import {
-  uploadedPromptAttachmentSchema,
-  type UploadedPromptAttachment,
-} from "@bb/server-contract";
+import { uploadedPromptAttachmentSchema } from "@bb/server-contract";
 import { z } from "zod";
 
-export type PromptDraftAttachment = UploadedPromptAttachment;
+const pastedTextDraftSchema = z.object({
+  id: z.string(),
+  preview: z.string(),
+  status: z.enum(["preparing", "ready", "error"]),
+  error: z.string().optional(),
+});
+
+const promptDraftAttachmentSchema = uploadedPromptAttachmentSchema.extend({
+  pastedText: pastedTextDraftSchema.optional(),
+});
+
+export type PromptDraftAttachment = z.infer<typeof promptDraftAttachmentSchema>;
 
 export interface PromptDraftState {
   text: string;
@@ -33,7 +41,7 @@ const promptDraftStorageSchema = z.object({
     .default([])
     .transform((items) =>
       items.flatMap((item) => {
-        const result = uploadedPromptAttachmentSchema.safeParse(item);
+        const result = promptDraftAttachmentSchema.safeParse(item);
         return result.success ? [result.data] : [];
       }),
     ),
@@ -188,7 +196,20 @@ export function normalizePromptTextMentions(
     .sort((left, right) => left.start - right.start || left.end - right.end);
 }
 
-export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
+export function promptDraftToInput(
+  draft: PromptDraftState,
+  options: { forPreview?: boolean } = {},
+): PromptInput[] {
+  if (
+    !options.forPreview &&
+    draft.attachments.some(
+      (attachment) =>
+        attachment.pastedText !== undefined &&
+        attachment.pastedText.status !== "ready",
+    )
+  ) {
+    throw new Error("Finish preparing pasted text attachments before sending.");
+  }
   const input: PromptInput[] = [];
 
   const trimStartLength = draft.text.length - draft.text.trimStart().length;
@@ -215,6 +236,8 @@ export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
   }
 
   for (const attachment of draft.attachments) {
+    if (attachment.pastedText && attachment.pastedText.status !== "ready")
+      continue;
     if (attachment.type === "localImage") {
       input.push({
         type: "localImage",
