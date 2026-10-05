@@ -4,7 +4,6 @@ import {
   isLargeTextPaste,
   PastedTextAttachments,
 } from "@/lib/pasted-text-attachments";
-import { sdk } from "@/lib/sdk";
 import {
   PastedTextHistory,
   recordPastedTextAttachment,

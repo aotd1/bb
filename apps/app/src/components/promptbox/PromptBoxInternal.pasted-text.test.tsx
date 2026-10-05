@@ -27,7 +27,10 @@ import {
 } from "./PromptBoxInternal";
 
 vi.mock("@/lib/sdk", () => ({
-  sdk: { projects: { attachments: { upload: vi.fn() } } },
+  sdk: {
+    projects: { attachments: { upload: vi.fn() } },
+    threads: { resolveMentions: vi.fn() },
+  },
 }));
 
 function target(threadId: string, text = "") {
@@ -121,6 +124,7 @@ function paste(text: string, files: File[] = [], html = "") {
 }
 
 beforeEach(() => {
+  vi.mocked(sdk.threads.resolveMentions).mockReset().mockResolvedValue([]);
   vi.stubGlobal("Blob", NodeBlob);
   vi.stubGlobal("File", NodeFile);
   vi.stubGlobal("indexedDB", new IDBFactory());
@@ -155,6 +159,81 @@ afterEach(() => {
 });
 
 describe("large Paste in the real message editor", () => {
+  it("keeps thread links inside a large paste as exact file data without resolving them", async () => {
+    const draftTarget = target("a", "inspect errors");
+    render(<Harness draftTarget={draftTarget} />);
+    const text = `${window.location.origin}/projects/proj_example/threads/thr_example\n${"x".repeat(5_000)}`;
+    paste(text);
+    await waitFor(() =>
+      expect(draftTarget.getCurrent().attachments[0]?.pastedText?.status).toBe(
+        "ready",
+      ),
+    );
+    const uploaded = vi.mocked(sdk.projects.attachments.upload).mock
+      .calls[0]![0].clientFile;
+    if (!(uploaded instanceof File))
+      throw new Error("Expected an uploaded File");
+    expect(await uploaded.text()).toBe(text);
+    expect(draftTarget.getCurrent().text).toBe("inspect errors");
+    expect(draftTarget.getCurrent().mentions).toEqual([]);
+    expect(sdk.threads.resolveMentions).not.toHaveBeenCalled();
+  });
+
+  it("preserves thread-link conversion and its Undo/Redo order after a pasted attachment", async () => {
+    const draftTarget = target("a", "request ");
+    const resolved = {
+      threadId: "thr_86mb5jjzi9",
+      projectId: "proj_khiw2za95v",
+      label: "Reference thread",
+    };
+    const url = `${window.location.origin}/projects/${resolved.projectId}/threads/${resolved.threadId}`;
+    vi.mocked(sdk.threads.resolveMentions).mockResolvedValue([resolved]);
+    render(<Harness draftTarget={draftTarget} />);
+    act(() => {
+      editor().commands.focus("end");
+    });
+    paste("x".repeat(5_000));
+    await waitFor(() =>
+      expect(draftTarget.getCurrent().attachments[0]?.pastedText?.status).toBe(
+        "ready",
+      ),
+    );
+    paste(url);
+    await waitFor(() =>
+      expect(draftTarget.getCurrent().text).toBe(
+        `request @thread:${resolved.threadId}`,
+      ),
+    );
+    expect(draftTarget.getCurrent().mentions).toHaveLength(1);
+    act(() => {
+      editor().commands.undo();
+    });
+    expect(draftTarget.getCurrent().text).toBe(`request ${url}`);
+    expect(draftTarget.getCurrent().attachments).toHaveLength(1);
+    act(() => {
+      editor().commands.undo();
+    });
+    expect(draftTarget.getCurrent().text).toBe("request ");
+    expect(draftTarget.getCurrent().attachments).toHaveLength(1);
+    act(() => {
+      editor().commands.undo();
+    });
+    expect(draftTarget.getCurrent().attachments).toEqual([]);
+    expect(draftTarget.getCurrent().text).toBe("request ");
+    act(() => {
+      editor().commands.redo();
+      editor().commands.redo();
+      editor().commands.redo();
+    });
+    expect(draftTarget.getCurrent().attachments).toHaveLength(1);
+    expect(draftTarget.getCurrent().text).toBe(
+      `request @thread:${resolved.threadId}`,
+    );
+    expect(draftTarget.getCurrent().mentions).toHaveLength(1);
+    expect(sdk.projects.attachments.upload).toHaveBeenCalledOnce();
+    expect(sdk.threads.resolveMentions).toHaveBeenCalledOnce();
+  });
+
   it("preserves the selected request and focus, uses plain text, and never parses the large HTML", async () => {
     const draftTarget = target("a", "inspect selected errors");
     render(<Harness draftTarget={draftTarget} />);

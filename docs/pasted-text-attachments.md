@@ -157,3 +157,37 @@ pnpm exec turbo run test --filter=bb-plugin-provider-claude-code -- bridge.test 
 pnpm exec turbo run typecheck --filter=@bb/app --filter=@bb/client-core --filter=@bb/server-contract --filter=@bb/thread-view --filter=bb-plugin-provider-codex --filter=bb-plugin-provider-pi
 pnpm exec turbo run lint --filter=@bb/app --filter=bb-plugin-provider-codex --filter=bb-plugin-provider-pi
 ```
+
+## Upstream preparation, 2026-10-05
+
+The `pasted-text-attachments-upstream` branch starts at upstream `main` commit
+`5d31d8c32d85d7bde75d211b8295836b33fc2a26`. The original four feature commits
+were cherry-picked onto that base. The composer extension conflict was resolved
+by retaining both upstream thread-link paste conversion and pasted attachment
+history; a duplicate SDK import introduced by the automatic merge was removed.
+
+Two real-composer regression tests verify that thread URLs inside a large paste
+remain exact file data without mention resolution, and that a subsequent short
+thread-link paste still becomes a pill. Undo and Redo retain the correct order
+across attachment creation, URL insertion, and pill conversion without a second
+upload or lookup.
+
+Checks rerun on the updated branch through Turbo:
+
+| Check                                                                                       | Result                                    |
+| ------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Shared composer, pasted text, thread links and history                                      | 323 passed                                |
+| Client-core prompt drafts                                                                   | 19 passed                                 |
+| Thread-view parsing and timeline                                                            | 90 passed                                 |
+| Host daemon dispatch and attachment staging                                                 | 33 passed                                 |
+| Codex provider suite                                                                        | 336 passed                                |
+| Pi provider suite                                                                           | 183 passed, 1 existing skipped test       |
+| Focused ACP pasted-text resource-link contract                                              | 1 passed; other tests filtered out        |
+| App/client-core/server-contract/thread-view/Codex/Pi/ACP typecheck and available lint tasks | 15 tasks passed; existing warnings remain |
+
+The manual multi-megabyte scenario, container staging check, and editor
+screenshot above were captured on the original branch, before this update.
+They were not repeated on the upstream-based branch. The remote-host, native
+mobile and live non-Codex provider limitations still apply. No Codex Desktop
+reference screenshot was captured: the computer-use tool refused access to
+`com.openai.codex`. The documentation image is explicitly a BB prototype.
