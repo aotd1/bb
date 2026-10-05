@@ -112,6 +112,7 @@ export interface EventProjectionUserMessage extends EventProjectionMessageBase {
     imageUrls?: string[];
     localImagePaths?: string[];
     localFilePaths?: string[];
+    localFileDetails?: { path: string; name: string; sizeBytes?: number }[];
   };
 }
 

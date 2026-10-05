@@ -27,6 +27,7 @@ export function parsePromptInput(
   imageUrls: string[];
   localImagePaths: string[];
   localFilePaths: string[];
+  localFileDetails?: { path: string; name: string; sizeBytes?: number }[];
   mentions: PromptTextMention[];
 } | null {
   if (!Array.isArray(input) || input.length === 0) return null;
@@ -38,6 +39,8 @@ export function parsePromptInput(
   const imageUrls: string[] = [];
   const localImagePaths: string[] = [];
   const localFilePaths: string[] = [];
+  const localFileDetails: { path: string; name: string; sizeBytes?: number }[] =
+    [];
   const mentions: PromptTextMention[] = [];
   let textOffset = 0;
 
@@ -82,6 +85,14 @@ export function parsePromptInput(
         localFiles += 1;
         if (part.path.length > 0) {
           localFilePaths.push(part.path);
+          if (part.name)
+            localFileDetails.push({
+              path: part.path,
+              name: part.name,
+              ...(part.sizeBytes === undefined
+                ? {}
+                : { sizeBytes: part.sizeBytes }),
+            });
         }
         break;
     }
@@ -100,6 +111,7 @@ export function parsePromptInput(
     imageUrls,
     localImagePaths,
     localFilePaths,
+    ...(localFileDetails.length > 0 ? { localFileDetails } : {}),
     mentions,
   };
 }
@@ -150,6 +162,9 @@ function buildAttachments(
     webImages: parsed.webImages,
     localImages: parsed.localImages,
     localFiles: parsed.localFiles,
+    ...(parsed.localFileDetails
+      ? { localFileDetails: parsed.localFileDetails }
+      : {}),
     ...(parsed.imageUrls.length > 0 ? { imageUrls: parsed.imageUrls } : {}),
     ...(parsed.localImagePaths.length > 0
       ? { localImagePaths: parsed.localImagePaths }

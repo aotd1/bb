@@ -7,6 +7,7 @@ import {
 } from "../../ui/image-lightbox.js";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { buildProjectAttachmentContentUrl } from "@/lib/file-content-urls";
+import { formatByteSize } from "@/lib/format-byte-size";
 import type {
   ThreadTimelineLocalFileLinkHandler,
   UserAttachmentImageSrcResolver,
@@ -19,6 +20,7 @@ interface ConversationImageItem {
 
 export interface ConversationAttachmentItems {
   filePaths: string[];
+  fileDetails?: TimelineConversationAttachments["localFileDetails"];
   imageItems: ConversationImageItem[];
 }
 
@@ -97,6 +99,9 @@ export function buildAttachmentItems({
 
   return {
     filePaths: attachments.localFilePaths,
+    ...(attachments.localFileDetails
+      ? { fileDetails: attachments.localFileDetails }
+      : {}),
     imageItems,
   };
 }
@@ -104,6 +109,7 @@ export function buildAttachmentItems({
 export function ConversationAttachments({
   align = "start",
   filePaths,
+  fileDetails,
   imageItems,
   onOpenLocalFileLink,
   projectId,
@@ -169,8 +175,14 @@ export function ConversationAttachments({
                 ? "border-surface-selected-border bg-surface-raised"
                 : "border-border bg-surface-recessed",
             );
+            const detail = fileDetails?.find((file) => file.path === path);
             const label = (
-              <span className="truncate">{fileNameFromPath(path)}</span>
+              <span className="truncate">
+                {detail?.name ?? fileNameFromPath(path)}
+                {detail?.sizeBytes === undefined
+                  ? ""
+                  : ` · ${formatByteSize(detail.sizeBytes)}`}
+              </span>
             );
             const attachmentHref = projectAttachmentHref({ path, projectId });
 

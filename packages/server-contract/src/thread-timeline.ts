@@ -83,6 +83,15 @@ export const timelineConversationAttachmentsSchema = z.object({
   imageUrls: z.array(z.string()),
   localImagePaths: z.array(z.string()),
   localFilePaths: z.array(z.string()),
+  localFileDetails: z
+    .array(
+      z.object({
+        path: z.string(),
+        name: z.string(),
+        sizeBytes: z.number().nonnegative().optional(),
+      }),
+    )
+    .optional(),
 });
 export type TimelineConversationAttachments = z.infer<
   typeof timelineConversationAttachmentsSchema
