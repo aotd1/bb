@@ -108,8 +108,8 @@ metadata was under 1 KiB. Reloading and reopening the composer restored both.
 Sending the attachment to a real local Codex agent resulted in a file-tool read
 and the response `UTF-8 bytes: 3638577 Lines: 75151`. The editor cleared after
 successful submission, and reloaded history retained the content link and
-original display name. A screenshot is delivered separately as a thread
-artifact, outside the checkout.
+original display name. The [editor screenshot](assets/pasted-text-editor.jpg)
+shows the compact attachment beside the short request.
 
 Container verification ran the actual bundled `stagePromptAttachments` and
 `toCodexUserInput` functions inside an ephemeral Linux Docker container with
