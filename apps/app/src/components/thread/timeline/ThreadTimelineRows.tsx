@@ -943,7 +943,10 @@ const ConversationRowContent = memo(function ConversationRowContent({
             input.push({ type: "localImage", path });
           }
           for (const path of row.attachments?.localFilePaths ?? []) {
-            input.push({ type: "localFile", path });
+            const details = row.attachments?.localFileDetails?.find(
+              (file) => file.path === path,
+            );
+            input.push({ type: "localFile", path, ...details });
           }
           onEditMessage({
             messageId: row.id,

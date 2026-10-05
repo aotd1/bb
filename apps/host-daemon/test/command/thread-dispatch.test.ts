@@ -170,10 +170,17 @@ describe("thread command dispatch", () => {
     );
     const harness = createHarness();
     const requestId = nextClientRequestId();
-    const uploadedNotesContent = "content:notes-uploaded.txt";
+    const syntheticLines =
+      `${"synthetic request entry: ".padEnd(47, "x")}\n`.repeat(75_150);
+    const uploadedNotesContent =
+      syntheticLines + "x".repeat(3_638_577 - syntheticLines.length);
     const fetchProjectAttachment = vi.fn<FetchProjectAttachment>(
       async (args) => ({
-        bytes: Buffer.from(`content:${args.path}`),
+        bytes: Buffer.from(
+          args.path === "notes-uploaded.txt"
+            ? uploadedNotesContent
+            : `content:${args.path}`,
+        ),
       }),
     );
 
@@ -269,6 +276,9 @@ describe("thread command dispatch", () => {
     await expect(fs.readFile(stagedFile.path, "utf8")).resolves.toBe(
       uploadedNotesContent,
     );
+    expect(runtimeInput[0]).toEqual(textPromptInput("inspect these"));
+    expect(JSON.stringify(runtimeInput).length).toBeLessThan(2_000);
+    expect(uploadedNotesContent.split("\n")).toHaveLength(75_151);
     await expect(fs.readFile(stagedImage.path, "utf8")).resolves.toBe(
       "content:screenshot-uploaded.png",
     );
