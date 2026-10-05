@@ -426,10 +426,17 @@ describe("ThreadTimelineRows actions", () => {
             attachments: {
               webImages: 0,
               localImages: 1,
-              localFiles: 0,
+              localFiles: 1,
               imageUrls: [],
               localImagePaths: ["uploads/screenshot.png"],
-              localFilePaths: [],
+              localFilePaths: ["uploads/pasted.txt"],
+              localFileDetails: [
+                {
+                  path: "uploads/pasted.txt",
+                  name: "Pasted text.txt",
+                  sizeBytes: 3638577,
+                },
+              ],
             },
           }),
         ]}
@@ -443,7 +450,15 @@ describe("ThreadTimelineRows actions", () => {
     expect(onEditMessage).toHaveBeenCalledWith({
       messageId: expect.any(String),
       expectedRequestSequence: 11,
-      input: [{ type: "localImage", path: "uploads/screenshot.png" }],
+      input: [
+        { type: "localImage", path: "uploads/screenshot.png" },
+        {
+          type: "localFile",
+          path: "uploads/pasted.txt",
+          name: "Pasted text.txt",
+          sizeBytes: 3638577,
+        },
+      ],
     });
   });
 
