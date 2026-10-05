@@ -21,6 +21,7 @@ import type { PromptDraftState } from "@bb/client-core";
 import { createDeferredPromise } from "@bb/test-helpers";
 import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
 import { sdk } from "@/lib/sdk";
+import { readPastedTextFile } from "@/lib/pasted-text-storage";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   PromptBoxInternal,
@@ -413,5 +414,81 @@ describe("large Paste in the real message editor", () => {
     expect(first.getCurrent().attachments[0]?.pastedText?.status).toBe("ready");
     expect(second.getCurrent().attachments).toEqual([]);
     expect(second.getCurrent().text).toBe("second request");
+  });
+});
+
+describe("pasted text composer lifecycle", () => {
+  it("removes a pasted attachment received through shared draft storage", async () => {
+    const first = target("shared");
+    render(<Harness draftTarget={first} />);
+    act(() => {
+      first.setDraft({
+        text: "request",
+        mentions: [],
+        attachments: [
+          {
+            type: "localFile",
+            path: "uploaded.txt",
+            name: "Pasted text.txt",
+            sizeBytes: 5000,
+            pastedText: {
+              id: "from-another-tab",
+              preview: "preview",
+              status: "ready",
+            },
+          },
+        ],
+      });
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove Pasted text.txt" }),
+    );
+    expect(first.getCurrent().attachments).toEqual([]);
+  });
+
+  it("restores a ready attachment on Undo after returning during upload", async () => {
+    const first = target("a", "first request");
+    const second = target("b", "second request");
+    const deferred =
+      createDeferredPromise<
+        Awaited<ReturnType<typeof sdk.projects.attachments.upload>>
+      >();
+    vi.mocked(sdk.projects.attachments.upload).mockImplementationOnce(
+      () => deferred.promise,
+    );
+    const view = render(<Harness draftTarget={first} />);
+    paste("x".repeat(5000));
+    await waitFor(() =>
+      expect(sdk.projects.attachments.upload).toHaveBeenCalledOnce(),
+    );
+    const id = first.getCurrent().attachments[0]!.pastedText!.id;
+    view.rerender(<Harness draftTarget={second} />);
+    view.rerender(<Harness draftTarget={first} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove Pasted text.txt" }),
+    );
+    await act(async () => {
+      deferred.resolve({
+        type: "localFile",
+        path: "uploaded.txt",
+        name: "Pasted text.txt",
+        sizeBytes: 5000,
+      });
+      await deferred.promise;
+    });
+    await waitFor(() =>
+      expect(readPastedTextFile(id)).rejects.toThrow("unavailable"),
+    );
+    expect(first.getCurrent().attachments).toEqual([]);
+    act(() => {
+      editor().commands.undo();
+    });
+    await waitFor(() =>
+      expect(first.getCurrent().attachments[0]?.pastedText?.status).toBe(
+        "ready",
+      ),
+    );
+    expect(first.getCurrent().attachments[0]?.path).toBe("uploaded.txt");
+    expect(sdk.projects.attachments.upload).toHaveBeenCalledOnce();
   });
 });

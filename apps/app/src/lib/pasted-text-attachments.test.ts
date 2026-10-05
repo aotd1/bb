@@ -53,6 +53,7 @@ function harness(initial: PromptDraftState = emptyPromptDraftState()) {
     mimeType: file.type,
   }));
   const manager = new PastedTextAttachments(target, upload, storage);
+  manager.resume();
   return { target, manager, upload, storage, files };
 }
 
@@ -240,5 +241,129 @@ describe("pasted text attachments", () => {
       mentions: [],
       attachments: [],
     });
+  });
+});
+
+describe("shared pasted text draft lifecycle", () => {
+  it("can remove an attachment added by another mounted composer", async () => {
+    const first = harness();
+    const second = new PastedTextAttachments(
+      first.target,
+      first.upload,
+      first.storage,
+    );
+    const id = first.manager.create("x".repeat(5000));
+    first.manager.setPresent(id, true);
+    await first.manager.prepare(id);
+    second.resume();
+    second.setPresent(id, false);
+    expect(first.target.getCurrent().attachments).toEqual([]);
+    second.setPresent(id, true);
+    expect(first.target.getCurrent().attachments[0]?.pastedText?.status).toBe(
+      "ready",
+    );
+    expect(first.upload).toHaveBeenCalledOnce();
+  });
+
+  it("can undo removal after returning while an old upload is in flight", async () => {
+    const first = harness();
+    const uploaded =
+      createDeferredPromise<Awaited<ReturnType<typeof first.upload>>>();
+    first.upload.mockImplementationOnce(() => uploaded.promise);
+    const id = first.manager.create("x".repeat(5000));
+    first.manager.setPresent(id, true);
+    await vi.waitFor(() => expect(first.upload).toHaveBeenCalledOnce());
+    first.manager.dispose();
+    const second = new PastedTextAttachments(
+      first.target,
+      first.upload,
+      first.storage,
+    );
+    second.resume();
+    second.setPresent(id, false);
+    uploaded.resolve({
+      type: "localFile",
+      path: "uploaded.txt",
+      name: "Pasted text.txt",
+      sizeBytes: 5000,
+      mimeType: "text/plain",
+    });
+    await first.manager.prepare(id);
+    second.setPresent(id, true);
+    await second.prepare(id);
+    expect(first.upload).toHaveBeenCalledOnce();
+    expect(first.target.getCurrent().attachments[0]?.path).toBe("uploaded.txt");
+    expect(first.target.getCurrent().attachments[0]?.pastedText?.status).toBe(
+      "ready",
+    );
+  });
+});
+
+describe("shared pasted text recovery cleanup", () => {
+  it("retains a failed upload for another manager's Undo and cleans up after its disposal", async () => {
+    const first = harness();
+    const uploaded =
+      createDeferredPromise<Awaited<ReturnType<typeof first.upload>>>();
+    first.upload.mockImplementationOnce(() => uploaded.promise);
+    const text = "x".repeat(5000);
+    const id = first.manager.create(text);
+    first.manager.setPresent(id, true);
+    await vi.waitFor(() => expect(first.upload).toHaveBeenCalledOnce());
+    first.manager.dispose();
+    const second = new PastedTextAttachments(
+      first.target,
+      first.upload,
+      first.storage,
+    );
+    second.resume();
+    second.dispose();
+    second.resume();
+    second.setPresent(id, false);
+    uploaded.reject(new Error("network failure"));
+    await first.manager.prepare(id);
+    expect(first.target.getCurrent().attachments).toEqual([]);
+    expect(await first.storage.read(id).then((file) => file.text())).toBe(text);
+    second.setPresent(id, true);
+    expect(first.target.getCurrent().attachments[0]?.pastedText?.status).toBe(
+      "error",
+    );
+    expect(await second.text(id)).toBe(text);
+    second.setPresent(id, false);
+    second.dispose();
+    await vi.waitFor(() => expect(first.files.has(id)).toBe(false));
+  });
+
+  it("shares a retry that starts after both managers have loaded the failed draft", async () => {
+    const first = harness();
+    first.upload.mockRejectedValueOnce(new Error("network failure"));
+    const id = first.manager.create("x".repeat(5000));
+    first.manager.setPresent(id, true);
+    await first.manager.prepare(id);
+    const second = new PastedTextAttachments(
+      first.target,
+      first.upload,
+      first.storage,
+    );
+    second.resume();
+    const uploaded =
+      createDeferredPromise<Awaited<ReturnType<typeof first.upload>>>();
+    first.upload.mockImplementationOnce(() => uploaded.promise);
+    const retry = first.manager.prepare(id);
+    await vi.waitFor(() => expect(first.upload).toHaveBeenCalledTimes(2));
+    second.setPresent(id, false);
+    uploaded.resolve({
+      type: "localFile",
+      path: "retried.txt",
+      name: "Pasted text.txt",
+      sizeBytes: 5000,
+      mimeType: "text/plain; charset=utf-8",
+    });
+    await retry;
+    second.setPresent(id, true);
+    expect(first.target.getCurrent().attachments[0]?.path).toBe("retried.txt");
+    expect(first.target.getCurrent().attachments[0]?.pastedText?.status).toBe(
+      "ready",
+    );
+    expect(first.upload).toHaveBeenCalledTimes(2);
   });
 });
