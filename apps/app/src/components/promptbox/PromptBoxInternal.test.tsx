@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
+import { buildMessageClipboardHtml } from "../../lib/message-clipboard";
 
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { focusPaneComposer } from "@/lib/pane-composer-focus";
 import { registerComposerMenuPlugins } from "@/test/fixtures/composer-menu";
 import { resolveThreadMentionDropTarget } from "@/lib/thread-mention-drop";
@@ -23,7 +25,7 @@ import {
   act,
   cleanup,
   fireEvent,
-  render,
+  render as renderWithoutProviders,
   screen,
   waitFor,
   within,
@@ -85,6 +87,11 @@ import type {
   PromptMentionSuggestion,
   ProviderCommandSuggestion,
 } from "@bb/client-core";
+
+const render = (
+  ui: Parameters<typeof renderWithoutProviders>[0],
+  options?: Parameters<typeof renderWithoutProviders>[1],
+) => renderWithoutProviders(ui, { wrapper: TooltipProvider, ...options });
 
 type PromptBoxProps = ComponentProps<typeof PromptBoxInternal>;
 
@@ -783,8 +790,15 @@ describe("PromptBoxInternal composer popups", () => {
     fireEvent.click(
       within(recent).getByRole("button", { name: "Open saved prompts" }),
     );
-    await screen.findByRole("dialog", { name: "Saved prompts" });
+    const reopened = await screen.findByRole("dialog", {
+      name: "Saved prompts",
+    });
     expect(screen.queryByRole("dialog", { name: "Recent files" })).toBeNull();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(reopened).getByRole("textbox"),
+      ),
+    );
   });
 
   it("replaces suggestions and keeps their trigger dismissed through popup focus transfer", async () => {
@@ -1471,6 +1485,7 @@ describe("PromptBoxInternal controlled value sync", () => {
             promptBoxRef,
             voice: {
               state: "idle",
+              microphoneWarning: null,
               isSupported: true,
               stream: null,
               start,
@@ -2341,10 +2356,16 @@ describe("PromptBoxInternal escape", () => {
 
 describe("PromptBoxInternal size controls", () => {
   it.each([
-    ["thread", "calc(50dvh - 3rem)"],
-    ["root-compose", "calc(70dvh - 3rem)"],
+    [
+      "thread",
+      "min(calc(50dvh - 3rem), var(--composer-editor-available-height, 100dvh))",
+    ],
+    [
+      "root-compose",
+      "min(calc(70dvh - 3rem), var(--composer-editor-available-height, 100dvh))",
+    ],
   ] as const)(
-    "caps the %s editor at its intended viewport height",
+    "caps the %s editor at its intended viewport height or the host's available space",
     (layout, maxHeight) => {
       render(
         <PromptBoxInternal
@@ -2426,6 +2447,7 @@ describe("PromptBoxInternal plugin composer actions", () => {
         {...createPromptBoxProps({
           voice: {
             state: "idle",
+            microphoneWarning: null,
             isSupported: true,
             stream: null,
             start: vi.fn(),
@@ -2773,6 +2795,7 @@ describe("PromptBoxInternal compact layout", () => {
             },
             voice: {
               state: "idle",
+              microphoneWarning: null,
               isSupported: true,
               stream: null,
               start: vi.fn(),
@@ -2885,6 +2908,7 @@ describe("PromptBoxInternal compact layout", () => {
   it("keeps the one-line editor, voice input, and submit action", () => {
     const voice: PromptVoiceConfig = {
       state: "idle",
+      microphoneWarning: null,
       isSupported: true,
       stream: null,
       start: vi.fn(),
@@ -2944,6 +2968,7 @@ describe("PromptBoxInternal compact layout", () => {
             },
             voice: {
               state: "idle",
+              microphoneWarning: null,
               isSupported: true,
               stream: null,
               start,
@@ -2994,6 +3019,7 @@ describe("PromptBoxInternal compact layout", () => {
               compact: { isCompact, placeholder: "Ask a follow-up" },
               voice: {
                 state: "idle",
+                microphoneWarning: null,
                 isSupported: true,
                 stream: null,
                 start,
@@ -3046,6 +3072,7 @@ describe("PromptBoxInternal compact layout", () => {
               compact: { isCompact: true, placeholder: "Ask a follow-up" },
               voice: {
                 state: "idle",
+                microphoneWarning: null,
                 isSupported: true,
                 stream: null,
                 start,
@@ -3085,6 +3112,7 @@ describe("PromptBoxInternal compact layout", () => {
       const start = vi.fn();
       const voice = {
         state: "idle" as const,
+        microphoneWarning: null,
         isSupported: true,
         stream: null,
         start,
@@ -3229,6 +3257,7 @@ describe("PromptBoxInternal compact layout", () => {
             compact: { isCompact: true, placeholder: "Ask a follow-up" },
             voice: {
               state: "idle",
+              microphoneWarning: null,
               isSupported: true,
               stream: null,
               start,
@@ -3269,6 +3298,7 @@ describe("PromptBoxInternal compact layout", () => {
             compact: { isCompact: true, placeholder: "Ask a follow-up" },
             voice: {
               state: "idle",
+              microphoneWarning: null,
               isSupported: true,
               stream: null,
               start,
@@ -3637,6 +3667,7 @@ describe("PromptBoxInternal compact layout", () => {
         {...createPromptBoxProps({
           voice: {
             state: "idle",
+            microphoneWarning: null,
             isSupported: true,
             stream: null,
             start: vi.fn(),
@@ -3660,6 +3691,7 @@ describe("PromptBoxInternal compact layout", () => {
     const onChange = vi.fn();
     const voice = {
       state: "idle" as const,
+      microphoneWarning: null,
       isSupported: true,
       stream: null,
       start: vi.fn(),
@@ -3711,6 +3743,7 @@ describe("PromptBoxInternal compact layout", () => {
             onChange,
             voice: {
               state,
+              microphoneWarning: null,
               isSupported: true,
               stream: null,
               start: vi.fn(),
@@ -3770,6 +3803,7 @@ describe("PromptBoxInternal compact layout", () => {
               onSubmit: () => onSubmit(value),
               voice: {
                 state,
+                microphoneWarning: null,
                 isSupported: true,
                 stream: null,
                 start: vi.fn(),
@@ -3817,6 +3851,7 @@ describe("PromptBoxInternal compact layout", () => {
               submission: { disabled: true },
               voice: {
                 state,
+                microphoneWarning: null,
                 isSupported: true,
                 stream: null,
                 start: vi.fn(),
@@ -3853,6 +3888,7 @@ describe("PromptBoxInternal compact layout", () => {
         compact: { isCompact: true, placeholder: "Ask a follow-up" },
         voice: {
           state,
+          microphoneWarning: null,
           isSupported: true,
           stream: null,
           start: vi.fn(),
@@ -3903,6 +3939,7 @@ describe("PromptBoxInternal compact layout", () => {
           value: "Keep this prompt visible while I dictate",
           voice: {
             state: "recording",
+            microphoneWarning: null,
             isSupported: true,
             stream: null,
             start: vi.fn(),
@@ -3969,6 +4006,7 @@ describe("PromptBoxInternal compact layout", () => {
     try {
       const idleVoice: PromptVoiceConfig = {
         state: "idle",
+        microphoneWarning: null,
         isSupported: true,
         stream: null,
         start: vi.fn(),
@@ -4019,6 +4057,7 @@ describe("PromptBoxInternal compact layout", () => {
             value: "Existing draft",
             voice: {
               state: "transcribing",
+              microphoneWarning: null,
               isSupported: true,
               stream: null,
               start: vi.fn(),
@@ -4078,6 +4117,7 @@ describe("PromptBoxInternal compact layout", () => {
       const cancel = vi.fn();
       const recordingVoice: PromptVoiceConfig = {
         state: "recording",
+        microphoneWarning: null,
         isSupported: true,
         stream: null,
         start: vi.fn(),
@@ -4149,6 +4189,7 @@ describe("PromptBoxInternal compact layout", () => {
             promptBoxRef,
             voice: {
               state: "transcribing",
+              microphoneWarning: null,
               isSupported: true,
               stream: null,
               start: vi.fn(),
@@ -4196,6 +4237,7 @@ describe("PromptBoxInternal compact layout", () => {
             promptBoxRef,
             voice: {
               state: "transcribing",
+              microphoneWarning: null,
               isSupported: true,
               stream: null,
               start: vi.fn(),
@@ -4888,6 +4930,75 @@ describe("PromptBoxInternal prompt actions", () => {
     await waitFor(() => expect(latestValue(changes)).toBe("Before A photo"));
     expect(onAttachFiles).toHaveBeenCalledWith([image]);
   });
+
+  it.each(["available", "unavailable", "removed editor"])(
+    "preserves marked HTML text while the image is %s",
+    async (state) => {
+      const onAttachFiles = vi.fn().mockResolvedValue(undefined);
+      let resolveImage: (response: Response) => void = () => {};
+      const fetchImage = vi.fn().mockImplementation(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveImage = resolve;
+          }),
+      );
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = fetchImage;
+      try {
+        const { changes, promptBoxRef, view } = renderPromptBox("Before ", {
+          onAttachFiles,
+        });
+        await focusPromptEnd(promptBoxRef);
+        const imageUrl = new URL("/attachments/photo.png", window.location.href)
+          .href;
+        pasteClipboard({
+          plainText: 'A <photo> & "caption"\nNext',
+          html: buildMessageClipboardHtml(
+            'A <photo> & "caption"\nNext',
+            imageUrl,
+          ),
+        });
+        await waitFor(() =>
+          expect(latestValue(changes)).toBe(
+            'Before A <photo> & "caption"\nNext',
+          ),
+        );
+        expect(fetchImage).toHaveBeenCalledOnce();
+        if (state === "removed editor") view.unmount();
+        await act(async () => {
+          resolveImage(
+            new Response(
+              state === "unavailable"
+                ? "Not found"
+                : new Uint8Array([137, 80, 78, 71]),
+              {
+                status: state === "unavailable" ? 404 : 200,
+                headers: {
+                  "content-type":
+                    state === "unavailable" ? "text/plain" : "image/png",
+                },
+              },
+            ),
+          );
+        });
+        if (state === "available") {
+          await waitFor(() =>
+            expect(onAttachFiles).toHaveBeenCalledWith([
+              expect.objectContaining({
+                name: "photo.png",
+                type: "image/png",
+                size: 4,
+              }),
+            ]),
+          );
+        } else {
+          expect(onAttachFiles).not.toHaveBeenCalled();
+        }
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    },
+  );
 
   it.each([
     {
@@ -5625,6 +5736,7 @@ describe("voice recording escape", () => {
   ): PromptVoiceConfig {
     return {
       state: "recording",
+      microphoneWarning: null,
       isSupported: true,
       stream: null,
       start: vi.fn(),

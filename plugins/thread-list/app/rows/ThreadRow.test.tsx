@@ -13,6 +13,7 @@ import { DndContext, useDraggable } from "@dnd-kit/core";
 import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
 import { useSidebarReorderDnd } from "../dnd/useSidebarReorderDnd.js";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { SidebarRenameProvider } from "./SidebarInlineRename.js";
 import type {
   PluginSidebarProject,
   PluginSidebarSplitLayout,
@@ -27,7 +28,10 @@ import {
   type RenderedSlot,
 } from "@get-bb/plugin-sdk/testing/app";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "../model/thread-activity.js";
-import { makeSidebarThread } from "../model/fixtures.js";
+import {
+  makeSidebarEnvironment,
+  makeSidebarThread,
+} from "../model/fixtures.js";
 import { sidebarShowProviderIconsAtom } from "../preferences/atoms.js";
 import {
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
@@ -76,6 +80,7 @@ function activity(
 
 interface HarnessProps {
   thread: PluginSidebarThread;
+  isCompactViewport?: boolean;
   crossProjectId?: string | null;
   isActive?: boolean;
   options?: ThreadRowOptions;
@@ -86,6 +91,7 @@ interface HarnessProps {
 
 function ThreadRowHarness({
   thread,
+  isCompactViewport,
   crossProjectId = null,
   isActive = false,
   options = DEFAULT_OPTIONS,
@@ -101,27 +107,36 @@ function ThreadRowHarness({
       options={options}
     />
   );
-  return (
+  const content = (
     <TooltipProvider>
       <SidebarDraftPresenceSync />
-      <CustomizeRowActionsContext.Provider
-        value={onCustomizeRowActions ?? null}
-      >
-        <div
-          onPointerDown={onRowEvent}
-          onKeyDown={onRowEvent}
-          onClick={onRowEvent}
+      <SidebarRenameProvider>
+        <CustomizeRowActionsContext.Provider
+          value={onCustomizeRowActions ?? null}
         >
-          {sectionDestinations ? (
-            <ThreadSectionMoveProvider destinations={sectionDestinations}>
-              {row}
-            </ThreadSectionMoveProvider>
-          ) : (
-            row
-          )}
-        </div>
-      </CustomizeRowActionsContext.Provider>
+          <div
+            onPointerDown={onRowEvent}
+            onKeyDown={onRowEvent}
+            onClick={onRowEvent}
+          >
+            {sectionDestinations ? (
+              <ThreadSectionMoveProvider destinations={sectionDestinations}>
+                {row}
+              </ThreadSectionMoveProvider>
+            ) : (
+              row
+            )}
+          </div>
+        </CustomizeRowActionsContext.Provider>
+      </SidebarRenameProvider>
     </TooltipProvider>
+  );
+  return isCompactViewport === undefined ? (
+    content
+  ) : (
+    <CompactViewportOverrideProvider isCompactViewport={isCompactViewport}>
+      {content}
+    </CompactViewportOverrideProvider>
   );
 }
 
@@ -235,11 +250,10 @@ afterEach(() => {
   vi.restoreAllMocks();
   resetSidebarTitleDoubleClickForTest();
   resetPreferencesSyncForTest();
-  getDefaultStore().set(sidebarShowProviderIconsAtom, false);
 });
 
 describe("ThreadRow", () => {
-  it("keeps the registered provider icon visible during inline rename when enabled", async () => {
+  it("shows the registered provider icon by default and keeps it visible during inline rename", async () => {
     const provider: PluginProvidersState["providers"][number] = {
       id: "provider-test",
       pluginId: "provider-test",
@@ -261,11 +275,6 @@ describe("ThreadRow", () => {
       completedTurnDisplay: "collapse",
     };
     const slot = renderThreadRow({ providers: [provider] });
-    expect(
-      slot.container.querySelector("[data-sidebar-thread-provider]"),
-    ).toBeNull();
-
-    act(() => getDefaultStore().set(sidebarShowProviderIconsAtom, true));
     expect(screen.getByRole("img", { name: "Test Provider" })).toBeTruthy();
     expect(
       slot.container.querySelector('[data-provider-logo="/provider-test.svg"]'),
@@ -513,6 +522,62 @@ describe("ThreadRow", () => {
         ?.style.getPropertyValue("--bb-sidebar-hover-actions-inset"),
     ).toBe("calc(var(--spacing) * 7.5)");
   });
+
+  it.each([false, true])(
+    "opens a new thread in the row's environment with pinned=%s",
+    async (pinned) => {
+      const slot = renderThreadRow({
+        isCompactViewport: true,
+        thread: createThread({
+          projectId: "proj_environment",
+          environment: makeSidebarEnvironment({
+            id: "env_existing",
+            path: "/repo",
+          }),
+          sectionId: "sec_building",
+          pinnedAt: pinned ? 1 : null,
+        }),
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
+      fireEvent.click(
+        await screen.findByRole("menuitem", {
+          name: "New thread in environment",
+        }),
+      );
+      expect(slot.inspection.sidebarActionCalls).toEqual([
+        {
+          method: "openNewThread",
+          options: {
+            projectId: "proj_environment",
+            environmentId: "env_existing",
+            experimental_placement: { sectionId: "sec_building", pinned },
+            focusPrompt: true,
+          },
+        },
+      ]);
+    },
+  );
+
+  it.each([
+    { compact: true, environment: null },
+    { compact: true, environment: makeSidebarEnvironment() },
+    { compact: false, environment: makeSidebarEnvironment({ path: "/repo" }) },
+  ])(
+    "omits environment reuse for compact=$compact and environment=$environment",
+    async ({ compact, environment }) => {
+      renderThreadRow({
+        isCompactViewport: compact,
+        thread: createThread({ environment }),
+      });
+      if (compact)
+        fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
+      else openActionsMenu();
+      await screen.findByRole("menuitem", { name: "Rename" });
+      expect(
+        screen.queryByRole("menuitem", { name: "New thread in environment" }),
+      ).toBeNull();
+    },
+  );
 
   it("orders the actions menu like the row actions, with customize before archive", async () => {
     const customize = vi.fn();
@@ -1641,6 +1706,18 @@ describe("ThreadRow", () => {
       expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
     });
     expect(screen.getByText("Thread")).not.toBeNull();
+  });
+
+  it("navigates instead of renaming when the title is double-tapped on a compact viewport", async () => {
+    renderThreadRow({ isCompactViewport: true });
+    const link = screen.getByRole("link", { name: "Open Thread" });
+
+    expect(fireEvent.click(link)).toBe(true);
+    expect(fireEvent.click(link)).toBe(true);
+    fireEvent.doubleClick(screen.getByText("Thread"));
+    await act(async () => new Promise(requestAnimationFrame));
+
+    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
   });
 
   it("does not start a sortable drag while editing the title", async () => {

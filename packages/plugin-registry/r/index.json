@@ -182,6 +182,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "question-form-draft",
+      "type": "registry:ui"
+    },
+    {
       "name": "question-form-host",
       "type": "registry:ui"
     },
@@ -312,6 +316,10 @@
     {
       "name": "utils",
       "type": "registry:lib"
+    },
+    {
+      "name": "voice-input-textarea",
+      "type": "registry:ui"
     },
     {
       "name": "workflow-progress",

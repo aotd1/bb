@@ -191,3 +191,40 @@ They were not repeated on the upstream-based branch. The remote-host, native
 mobile and live non-Codex provider limitations still apply. No Codex Desktop
 reference screenshot was captured: the computer-use tool refused access to
 `com.openai.codex`. The documentation image is explicitly a BB prototype.
+
+
+## Upstream update, 2026-10-07
+
+Merged upstream `main` at `68a1e8b7aa84fbd836eb8825e4d042ae0c52e74a`
+(150 new upstream commits) into the published prototype branch. This preserves
+its existing review history. Resolved the draft-schema and history-card conflicts
+while retaining upstream's attachment ownership fields and optional file sizes.
+Pasted attachment content links now use the source project when the composer
+moves to a different project; a regression test covers this. Draft recovery tests
+also verify that the source project survives persistence and provider-input
+conversion. The feature works with upstream's removal of composer Markdown
+formatting and retains thread-link Paste behavior.
+
+The previous review fixes in `3d03fc806` remain included: managers share an
+in-flight attachment's result, retain failed-upload recovery while another
+active manager needs it, and adopt attachments introduced by another editor
+before removal. Six regression tests cover these lifecycle cases.
+
+Checks rerun on this merged tree through Turbo: **1,034 tests passed**.
+
+| Check | Result |
+| --- | --- |
+| Composer, recovery, thread-link Paste, uploads, drafts, and history | 334 passed |
+| Client-core prompt drafts | 21 passed |
+| Thread-view parsing and timeline | 91 passed |
+| Host daemon dispatch/staging | 33 passed |
+| Codex provider suite | 350 passed |
+| Pi provider suite | 204 passed, 1 existing skipped test |
+| Focused ACP pasted-text resource-link contract | 1 passed; 128 tests filtered out |
+| Selected app/client-core/server-contract/thread-view/provider typecheck and lint | 15 Turbo tasks passed; existing warnings remain |
+
+These counts are a fresh run, not a sum with earlier validation runs. Manual
+browser, container, and live-provider scenarios described above were not
+repeated on this update. Native mobile clipboard behavior, a full turn on a
+second enrolled host, and live non-Codex provider compatibility remain unverified.
+The upstream proposal is published as [get-bb/bb#4910](https://github.com/get-bb/bb/issues/4910).

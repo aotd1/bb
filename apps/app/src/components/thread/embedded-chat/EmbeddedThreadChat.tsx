@@ -56,7 +56,6 @@ import {
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import {
   getLatestPendingInteraction,
-  isPendingInteractionStateUnknown,
   useThread,
   useThreadPendingInteractions,
   useThreadQueuedMessages,
@@ -178,6 +177,7 @@ function EmbeddedThreadChatHostedFooter({
         scrollBehavior="bottom-anchor"
         scrollAnchorThreadId={surface.threadId}
         shellClassName="!mx-0 !mt-0 md:!mx-0 md:!mt-0"
+        scrollAreaClassName="scroll-pt-4"
         contentClassName="gap-2 pt-4"
         footerClassName="chat-prompt-box"
         footer={footer}
@@ -223,10 +223,6 @@ function EmbeddedThreadChatWithComposer({
   const hasComposerBlockingPendingInteraction =
     activePendingInteraction !== null &&
     activePendingInteraction.payload.kind !== "plugin";
-  const pendingInteractionsInitialLoading = isPendingInteractionStateUnknown(
-    pendingInteractionsQuery.data,
-    pendingInteractionsQuery.isFetching,
-  );
   useThreadReadTracking({
     markThreadRead,
     thread: threadQuery.data,
@@ -415,7 +411,6 @@ function EmbeddedThreadChatWithComposer({
         childThreadId: threadId,
         hasPendingInteraction: hasComposerBlockingPendingInteraction,
         isDefaultExecutionOptionsLoading,
-        isPendingInteractionsInitialLoading: pendingInteractionsInitialLoading,
         isStopRequested,
         onStop: handleStopThread,
         runtimeDisplayStatus: displayStatus,
@@ -426,7 +421,6 @@ function EmbeddedThreadChatWithComposer({
       handleStopThread,
       isDefaultExecutionOptionsLoading,
       isStopRequested,
-      pendingInteractionsInitialLoading,
       threadId,
     ],
   );
@@ -1302,9 +1296,9 @@ function EmbeddedThreadChatWithComposer({
     >
       <BottomAnchoredScrollBody
         key={surfaceKey}
-        scrollAreaClassName={surfaceClassName}
+        scrollAreaClassName={cn(surfaceClassName, "scroll-pt-4")}
         contentClassName={
-          measure === "page" ? "!pb-3 !pt-3" : "!px-2 !pb-3 !pt-3"
+          measure === "page" ? "!pb-3 !pt-4" : "!px-2 !pb-3 !pt-4"
         }
         maxWidthClassName={maxWidthClassName}
         footer={footer}

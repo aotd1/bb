@@ -90,7 +90,6 @@ import {
 import { useOpenLinksInAppBrowserPreference } from "@/lib/in-app-browser-link-preference";
 import { useRewriteLocalhostLinksPreference } from "@/lib/localhost-link-rewrite-preference";
 import { localhostLinkRewriteDescription } from "@/lib/localhost-link-rewrite-description";
-import { useRichTextEditingPreference } from "@/lib/rich-text-editing-preference";
 import {
   SETTINGS_ROUTE_PATH,
   getRootComposeRoutePath,
@@ -158,6 +157,7 @@ interface AppearanceSettingsSectionProps {
   customThemes: readonly string[];
   pluginThemes: readonly PluginThemeMeta[];
   faviconColor: FaviconColorPreference;
+  navigationRail: boolean;
   onAppearanceThemeChange: (themeId: string) => void;
   onAppearanceThemePrefetch: (themeIds: readonly string[]) => void;
   onAppearanceThemePreview: (themeId: string | null) => void;
@@ -168,6 +168,8 @@ interface AppearanceSettingsSectionProps {
 }
 
 interface GeneralSettingsSectionProps {
+  showGitChanges: boolean;
+  onShowGitChangesChange: (enabled: boolean) => void;
   confirmThreadArchive: boolean;
   onConfirmThreadArchiveChange: (enabled: boolean) => void;
   desktopBrowserAvailable: boolean;
@@ -178,11 +180,9 @@ interface GeneralSettingsSectionProps {
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
   onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
   onRewriteLocalhostLinksChange: (enabled: boolean) => void;
-  onRichTextEditingChange: (enabled: boolean) => void;
   onSteerActiveThreadOnEnterChange: (enabled: boolean) => void;
   openLinksInAppBrowser: boolean;
   rewriteLocalhostLinks: boolean;
-  richTextEditing: boolean;
   steerActiveThreadOnEnter: boolean;
 }
 
@@ -209,6 +209,7 @@ function appPaletteLabel(
 }
 
 interface ExperimentsSettingsSectionProps {
+  performanceDiagnosticsAvailable: boolean;
   disabled: boolean;
   experiments: Experiments;
   onExperimentChange: (key: ExperimentKey, enabled: boolean) => void;
@@ -584,7 +585,6 @@ const IN_APP_BROWSER_LINK_SETTING_LABEL = "Open links in the in-app browser";
 const REWRITE_LOCALHOST_LINKS_SETTING_LABEL = "Rewrite localhost links";
 const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
   "Navigate to threads on creation";
-const RICH_TEXT_EDITING_SETTING_LABEL = "Markdown formatting in prompt box";
 const DIAGNOSTIC_EVENTS_SETTING_LABEL = "Show diagnostic events";
 const FOLLOW_UP_BEHAVIOR_SETTING_LABEL = "Default thread followup behavior";
 const FOLLOW_UP_BEHAVIOR_OPTIONS = [
@@ -681,6 +681,7 @@ export function AppearanceSettingsSection({
   customThemes,
   pluginThemes,
   faviconColor,
+  navigationRail,
   onAppearanceThemeChange,
   onAppearanceThemePrefetch,
   onAppearanceThemePreview,
@@ -840,8 +841,8 @@ export function AppearanceSettingsSection({
       <SettingsSection title="Interface">
         <div className="space-y-5">
           <SidebarThreadListSetting />
-          <SidebarNavigationSetting />
-          <SidebarHeaderSetting />
+          <SidebarNavigationSetting navigationRail={navigationRail} />
+          <SidebarHeaderSetting navigationRail={navigationRail} />
           <CodeRendererSettings />
           <SidebarFooterSettings />
         </div>
@@ -851,6 +852,8 @@ export function AppearanceSettingsSection({
 }
 
 export function GeneralSettingsSection({
+  showGitChanges,
+  onShowGitChangesChange,
   confirmThreadArchive,
   onConfirmThreadArchiveChange,
   desktopBrowserAvailable,
@@ -861,11 +864,9 @@ export function GeneralSettingsSection({
   onNavigateToThreadAfterCreateChange,
   onOpenLinksInAppBrowserChange,
   onRewriteLocalhostLinksChange,
-  onRichTextEditingChange,
   onSteerActiveThreadOnEnterChange,
   openLinksInAppBrowser,
   rewriteLocalhostLinks,
-  richTextEditing,
   steerActiveThreadOnEnter,
 }: GeneralSettingsSectionProps) {
   const localhostRewriteDescription = localhostLinkRewriteDescription(
@@ -885,11 +886,15 @@ export function GeneralSettingsSection({
             />
           </SettingsWithControl>
 
-          <SettingsWithControl label={RICH_TEXT_EDITING_SETTING_LABEL}>
+          <SettingsWithControl
+            label="Show Git changes and Commit button"
+            description="Show changed files above the composer and the Commit button in the thread header."
+          >
             <Switch
-              checked={richTextEditing}
-              onCheckedChange={onRichTextEditingChange}
-              aria-label={RICH_TEXT_EDITING_SETTING_LABEL}
+              checked={showGitChanges}
+              disabled={generalSettingsDisabled}
+              onCheckedChange={onShowGitChangesChange}
+              aria-label="Show Git changes and Commit button"
             />
           </SettingsWithControl>
 
@@ -1068,6 +1073,16 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Show the latest release notes as a compact preview on the Updates page.",
   },
+  navigationRail: {
+    label: "Navigation rail",
+    description:
+      "Keep a vertical rail of destinations on the left edge of the sidebar on every screen, with Home at the top and Settings at the bottom. Wide windows only.",
+  },
+  performanceDiagnostics: {
+    label: "Server performance diagnostics",
+    description:
+      "Collect CPU profiles and detailed performance logs while the server was launched with --perf-diagnostics. Turning this off stops collection; saved profiles remain.",
+  },
   serverMove: {
     label: "Server move",
     description:
@@ -1075,6 +1090,7 @@ const EXPERIMENT_DEFINITIONS: Record<
   },
 };
 export function ExperimentsSettingsSection({
+  performanceDiagnosticsAvailable,
   disabled,
   experiments,
   onExperimentChange,
@@ -1087,6 +1103,11 @@ export function ExperimentsSettingsSection({
       >
         <div className="space-y-5">
           {experimentKeys.map((experimentKey) => {
+            if (
+              experimentKey === "performanceDiagnostics" &&
+              !performanceDiagnosticsAvailable
+            )
+              return null;
             const definition = EXPERIMENT_DEFINITIONS[experimentKey];
             return (
               <SettingsWithControl
@@ -1130,7 +1151,6 @@ export function SettingsView() {
     useRewriteLocalhostLinksPreference();
   const [navigateToThreadAfterCreate, setNavigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
-  const [richTextEditing, setRichTextEditing] = useRichTextEditingPreference();
   const [desktopBrowserAvailable] = useState(isDesktopBrowserAvailable);
   const experiments = systemConfigQuery.data?.experiments ?? defaultExperiments;
   const updateExperimentsMutation = useUpdateExperiments();
@@ -1192,6 +1212,7 @@ export function SettingsView() {
         customThemes={systemConfigQuery.data?.customThemes ?? []}
         pluginThemes={systemConfigQuery.data?.pluginThemes ?? []}
         faviconColor={appearance.faviconColor}
+        navigationRail={experiments.navigationRail}
         themePreference={themePreference}
         onAppearanceThemeChange={(themeId) =>
           updateAppearanceMutation.mutate(
@@ -1268,6 +1289,9 @@ export function SettingsView() {
           updateExperimentsMutation.isPending
         }
         experiments={experiments}
+        performanceDiagnosticsAvailable={
+          systemConfigQuery.data?.performanceDiagnosticsAvailable ?? false
+        }
         onExperimentChange={(key, enabled) =>
           updateExperimentsMutation.mutate({ [key]: enabled })
         }
@@ -1283,6 +1307,13 @@ export function SettingsView() {
     content = (
       <>
         <GeneralSettingsSection
+          showGitChanges={generalSettings.showGitChanges}
+          onShowGitChangesChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              showGitChanges: enabled,
+            })
+          }
           confirmThreadArchive={generalSettings.confirmThreadArchive}
           onConfirmThreadArchiveChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
@@ -1305,12 +1336,10 @@ export function SettingsView() {
           navigateToThreadAfterCreate={navigateToThreadAfterCreate}
           openLinksInAppBrowser={openLinksInAppBrowser}
           rewriteLocalhostLinks={rewriteLocalhostLinks}
-          richTextEditing={richTextEditing}
           steerActiveThreadOnEnter={generalSettings.steerActiveThreadOnEnter}
           onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}
           onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
           onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}
-          onRichTextEditingChange={setRichTextEditing}
           onSteerActiveThreadOnEnterChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
               ...generalSettings,

@@ -90,6 +90,12 @@ Before stabilization, audit schema export fidelity (especially refinements and t
 
 Before stabilization, audit whether official store plugins should count as included, whether a plugin calling `experimental_setSafeMode` should be allowed to stop itself and others, whether the toggle should run asynchronously for installs with many slow plugins, and whether startup needs an out-of-band override (env var or flag) for a plugin that breaks the server before the toggle is reachable.
 
+## Plugin cache pruning
+
+`bb.sdk.plugins.experimental_pruneCache({ dryRun? })` (`POST /plugins/cache/prune`) deletes cached git and npm plugin versions under `<data>/plugins/cache` that no installed plugin uses, and returns `{ dryRun, removed, bytes }`. Each `removed` entry has `pluginId` (`null` for a cache directory with no artifact record), `version` (git commit or npm version), `path`, and the `bytes` it freed; a shared monorepo checkout is counted once. It removes every non-active version regardless of age (for example versions left by earlier bb releases, the candidate of a rolled-back update, or an interrupted operation) and unrecorded commit or version directories. It keeps every installed plugin's active version, versions a pending or restoring rollback still needs, any directory containing or inside an installed plugin's root (legacy and path installs), and in-flight staging directories. It runs under the plugin registration lock, so it never overlaps an install, update, or removal. `dryRun: true` reports the same entries without deleting. Removing a plugin deletes its cached versions immediately, and a successful update deletes the plugin's replaced versions once activation has stabilized; only the update's state snapshot stays for the 7-day retention window. The same operation backs `bb plugin prune [--dry-run]` and the command palette's Clean up plugin cache.
+
+Before stabilization, audit whether the response should report retained-but-unused sizes so a UI can show reclaimable space without a dry run, and whether stale `.staging`, `.promoting`, and `.corrupt` directories left by crashes should be collected too.
+
 ## RPC caller identity (`ExperimentalPluginRpcHandlerContext.experimental_caller`)
 
 Every `bb.rpc.register` handler receives a second argument, an
@@ -1536,7 +1542,8 @@ the `experimental_fixedTabOpenCalls` inspection list.
 component at the trailing edge of its host-rendered sidebar row. The component
 can own an RPC query and realtime subscription, so a live count updates within
 that subtree instead of lifting plugin state into the whole sidebar. The host
-does not mount it on compact viewports. On wider viewports its layout box is
+does not mount it on compact viewports, or in the icon-only rail of the
+`navigationRail` experiment. On wider viewports its layout box is
 limited to one line at 4rem wide by 1.25rem high; overflow is clipped and
 ordinary long text is ellipsized. It shares the trailing action column and
 fades out for the host options button on row hover or keyboard focus without
@@ -2410,6 +2417,15 @@ retains the drawer, thread list, footer, resize handle, and hidden-body
 shortcut policy. While a provider calls `openCustomize()`, the host renders
 its customize editor in the region and keeps the provider mounted but hidden.
 
+While the default-off `navigationRail` experiment is on, wide viewports do not
+mount this slot: the host draws a persistent rail from the same navigation
+model (items, order, visibility, split drags) and opens the
+customize editor in a popover beside the rail, including for `openCustomize()`
+calls. The rail is icon-only and does not mount panel sidebar accessories.
+Registrations and `sidebar.navigationProvider` are kept, so
+the picked provider returns when the experiment is turned off. Compact
+viewports still mount the slot.
+
 Search activation opens the quick palette. The removed inline sidebar search
 field, query state, combobox, and result list do not form part of this API.
 bb's own rows ship as the bundled Navigation plugin. `sidebar.navigationProvider`
@@ -2489,7 +2505,9 @@ under Settings → Appearance → Header. The component receives `width`,
 `controlSize`, and `isCompactViewport`. The host clips content to the row,
 keeps the window drag region on macOS while interactive descendants opt out,
 hides the header while the navigation customize editor is open, and removes
-it with one toast on a crash. `--bb-sidebar-control-size` and
+it with one toast on a crash. While the `navigationRail` experiment is on,
+wide viewports do not mount this slot because New thread takes the header;
+`sidebar.headerProvider` is kept and applies again when the experiment is off. `--bb-sidebar-control-size` and
 `--bb-sidebar-control-icon-size` expose the header's control sizing.
 
 A plugin that moves its navigation into the header tracks whether its header
@@ -2577,7 +2595,7 @@ fresh status, bounded at 2 s, before skipping a service whose cached status is
 older). At least one of `complete` / `transcribe` is required; which tasks a
 service appears for follows from the functions it declares. bb owns the
 prompts and the reply cleanup; the plugin owns the model, the API, and any retries. Failure is a
-rejected promise, and core aborts `signal` at 5 s (text) or 10 s (voice).
+rejected promise, and core aborts `signal` at 5 s (text) or 70 s (voice).
 
 The user picks per task in Settings → AI services, `bb settings ai-services
 set`, or `sdk.system.setAiServiceSelection` (`automatic` | `off` |
@@ -2633,6 +2651,44 @@ files, thread-storage files, and project files that use the primary host.
 4. Confirm omission should continue to mean primary-host resolution and that
    this remains compatible with persisted opener tabs created before the field
    existed.
+
+## `experimental_VoiceInputTextarea` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** A host-owned controlled textarea with bb's voice input. It
+takes `value`, `onValueChange`, and an optional `onVoiceInputActiveChange`;
+every other textarea attribute, including `ref` and `className`, reaches the
+underlying `<textarea>`. The caller styles the textarea; the host wraps it in
+a relative container and, when the browser supports voice input, adds bottom
+padding and the microphone, waveform, cancel, and stop controls. Finished
+transcripts are appended to `value` through `onValueChange` and stay editable;
+nothing is submitted. `onVoiceInputActiveChange` is true from the start of
+recording until transcription finishes or is cancelled, and false on unmount,
+so a form can hold navigation and submission. Unmounting discards late
+transcripts. It uses the same microphone preference, transcription service,
+and error handling as the prompt box. Without voice support it renders the
+plain textarea; the test harness renders that plain textarea too.
+
+The registry's `voice-input-textarea` item re-exports it, and the registry's
+`question-form` renders its free-text answer with it. Inside bb, the built-in
+Ask User Question and pi plugins and bb's own question form reach the same
+component through the `@bb/shared-ui/voice-input-textarea` module the build
+shims.
+
+**Audit before stabilizing.**
+
+1. **Prop surface.** Every textarea attribute passes through. Decide whether a
+   narrower explicit list is the better contract, and whether callers need to
+   style the host's wrapper (it is a plain block today, so a flex child cannot
+   stretch it).
+2. **Voice lifecycle.** Verify cancellation, microphone permissions, mobile
+   capture, and late transcription isolation when the component unmounts or
+   its `value` changes mid-transcription.
+3. **Unsupported hosts.** The textarea renders without controls when voice is
+   unsupported, with no reason shown. Decide whether callers need the
+   unsupported reason or a way to hide the controls.
+4. **Consumer count.** One form (the shared question form, used by Ask User
+   Question, pi, and bb's own questions). Confirm a third-party consumer before
+   the prefix drops.
 
 ## `experimental_SourceCode` / `experimental_Diff` (`@get-bb/plugin-sdk/app`)
 
@@ -3629,11 +3685,11 @@ snapshot is a no-op. `insert` remains the cursor/end insertion primitive.
 Core quoting, prefills and history restoration call this same contract. Quotes
 are pure draft transformations that append blockquoted text and merge attachments
 by path, followed by `focus()`. Attachments remain independent draft items, not
-children of a quote. `replace` does not upload/copy files across projects.
-Submission rollback, restore-if-empty seeds, uploads, and editor transactions
-remain beneath these actions. Command completion's trigger-range replacement and
-autocomplete dismissal remain a documented boundary, not a hidden option on
-`replace`.
+children of a quote. `replace` preserves source-project references; core copies
+those files into the destination project on submission. Submission rollback,
+restore-if-empty seeds, uploads, and editor transactions remain beneath these
+actions. Command completion's trigger-range replacement and autocomplete
+dismissal remain a documented boundary, not a hidden option on `replace`.
 
 `setText`, `updateText`, `clear`, `addQuote`, `insertMention`, and
 `removeMention` are marked internal and stripped from published declarations,
@@ -3683,3 +3739,27 @@ with third-party providers.
 `bb.sdk.experimental_promptHistory.list({ cursor?, limit?, signal? })` returns `{ entries, nextCursor }`: every accepted user prompt across projects and threads, newest first, each with `id`, `createdAt`, `input`, `projectId`, and `threadId`. `limit` is a digit string, defaulting to 100 and capped at 1000. `nextCursor` is an opaque string, or null on the last page. A page can hold fewer than `limit` entries while `nextCursor` is set, because stored rows whose input no longer parses are skipped. Prompts from a deleted thread remain listed until the thread row is removed, which cascades to its prompt history. The same route backs `bb prompt-history list`.
 
 Before stabilization, audit whether `limit` should be a number, whether the cursor format needs versioning, whether project or thread filters belong on this call rather than on `projects.promptHistory` and `threads.promptHistory`, and whether skipped rows should fill the page.
+
+## `ThreadChatMessageReference.experimental_messageSeq`
+
+The message reference handed to `messageAction` runs, `ThreadChat` consumer
+message actions, and prose selections carries the event sequence that recorded
+the message. It is the `msg` value of a message link and the seq accepted by
+`sdk.threads.message` and `bb thread log --message`, so a plugin can build or
+resolve a message link without guessing. It equals `sourceSeqEnd` except for a
+steer, which is recorded by its request and shown at its acceptance.
+Stabilize once message links have shipped and the seq has stayed stable across
+edit-and-rerun, forks and context clears, and decide whether `sourceSeqEnd`
+should remain alongside it.
+
+## `PluginSidebarThreadActions.experimental_archiveEnvironmentThreads`
+
+Archives an environment's active thread trees through the host flow, including optimistic cache updates, pane cleanup, shared toast styling, and one ten-second Undo action. Undo restores only returned archived IDs, sequentially with lifecycle owners first. Archive failures show a host error toast and reject; Undo failures show a host error toast.
+
+Stabilize after verifying group archive and Undo with descendants, already archived threads, split panes, navigation during the Undo window, and failure rollback across sidebar organization modes.
+
+## `PluginBbSdk.plugins.experimental_startUpdate` and `experimental_updateJobs`
+
+Starts a server-owned plugin update and returns its job immediately. `experimental_updateJobs.list/get` exposes queued/running phases and terminal update, rollback, or failure results. Jobs continue across client disconnects; finished jobs remain for ten minutes. Jobs are in memory and do not survive server restarts. `applyUpdate` retains its result contract by polling the job; raw callers without `Prefer: respond-async` retain the synchronous response. Running updates cannot be cancelled during activation or rollback.
+
+Stabilization requires exercising reconnect/reload, concurrent deduplication, rollback delivery, missing jobs after restart, and CLI/SDK parity before dropping the experimental prefix. No host-daemon wire change.

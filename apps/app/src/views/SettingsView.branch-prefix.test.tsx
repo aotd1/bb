@@ -23,6 +23,8 @@ function renderSection(overrides?: {
   return render(
     <>
       <GeneralSettingsSection
+        showGitChanges={true}
+        onShowGitChangesChange={vi.fn()}
         confirmThreadArchive={overrides?.confirmThreadArchive ?? true}
         onConfirmThreadArchiveChange={
           overrides?.onConfirmThreadArchiveChange ?? vi.fn()
@@ -37,11 +39,9 @@ function renderSection(overrides?: {
         onNavigateToThreadAfterCreateChange={vi.fn()}
         onOpenLinksInAppBrowserChange={vi.fn()}
         onRewriteLocalhostLinksChange={vi.fn()}
-        onRichTextEditingChange={vi.fn()}
         onSteerActiveThreadOnEnterChange={vi.fn()}
         openLinksInAppBrowser={false}
         rewriteLocalhostLinks={false}
-        richTextEditing={false}
         steerActiveThreadOnEnter={false}
       />
       <PrivacySettingsSection

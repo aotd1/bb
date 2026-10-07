@@ -52,15 +52,15 @@ interface MessageActionBarProps {
     text: string,
     attachments?: readonly PromptDraftAttachment[],
   ) => void;
+  onCopyLink?: () => void;
   onEdit?: () => void;
   onFork?: () => void;
-  onSendToMain?: () => void;
   disabled?: boolean;
   pluginActions?: readonly ThreadTimelinePluginMessageAction[];
 }
 
 interface MessageOverflowAction {
-  icon: "Copy" | "Edit" | "MessageSquarePlus" | "Fork" | "ArrowTurnBackward";
+  icon: "Copy" | "Link" | "Edit" | "MessageSquarePlus" | "Fork";
   plugin?: { pluginId: string | null; icon: string | null };
   key?: string;
   label: string;
@@ -312,9 +312,9 @@ export function MessageActionBar({
   addToChatAttachments = [],
   copyImageUrl,
   onAddToChat,
+  onCopyLink,
   onEdit,
   onFork,
-  onSendToMain,
   disabled,
   pluginActions = [],
 }: MessageActionBarProps) {
@@ -377,15 +377,6 @@ export function MessageActionBar({
           },
         ]
       : []),
-    ...(onSendToMain
-      ? [
-          {
-            icon: "ArrowTurnBackward" as const,
-            label: "Send to main thread",
-            onSelect: onSendToMain,
-          },
-        ]
-      : []),
     ...pluginActions.map((action) => ({
       icon: "Copy" as const,
       plugin: { pluginId: action.pluginId, icon: action.icon },
@@ -427,6 +418,15 @@ export function MessageActionBar({
       ? 0
       : layout.inlineCount;
   const menuActions = [
+    ...(onCopyLink
+      ? [
+          {
+            icon: "Link" as const,
+            label: "Copy link",
+            onSelect: onCopyLink,
+          },
+        ]
+      : []),
     ...inlineCandidates.slice(isCompactViewport ? 0 : inlineCount),
     ...trailingMenuActions,
   ];

@@ -264,7 +264,8 @@ export class PastedTextAttachments {
     } catch {
       const error = !saved
         ? "Recovery storage is unavailable. Text is retained in this session; retry or insert it as text before reloading."
-        : record.sizeBytes > PROMPT_ATTACHMENT_MAX_BYTES
+        : (record.sizeBytes ?? state.file?.size ?? 0) >
+            PROMPT_ATTACHMENT_MAX_BYTES
           ? `Pasted text exceeds the ${PROMPT_ATTACHMENT_MAX_BYTES} byte attachment limit.`
           : "Could not prepare pasted text. Your text is retained; retry or insert it as text.";
       this.replace(id, {

@@ -12,6 +12,7 @@ import {
   useVirtualizer,
   type Range,
 } from "@tanstack/react-virtual";
+import { isIOSWebKit } from "@/lib/ios-webkit";
 import {
   DEFAULT_WINDOWING_MIN_ITEM_COUNT,
   recordTimelineMeasurement,
@@ -55,7 +56,11 @@ export function TimelineWindowedItems({
   measurements,
   renderItem,
 }: TimelineWindowedItemsProps) {
+  const [scrollAdjustmentsKeepMomentum] = useState(
+    () => typeof navigator === "undefined" || !isIOSWebKit(navigator),
+  );
   const configured =
+    scrollAdjustmentsKeepMomentum &&
     itemKeys.length >= DEFAULT_WINDOWING_MIN_ITEM_COUNT &&
     getScrollElement !== null;
   const [scrollRootStatus, setScrollRootStatus] = useState<
@@ -154,6 +159,19 @@ export function TimelineWindowedItems({
     containerElementRef,
     virtualizer.containerRef,
   );
+
+  useLayoutEffect(() => {
+    virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (
+      item,
+      _delta,
+      instance,
+    ) => {
+      const scrollTop = resolvedGetScrollElement()?.scrollTop ?? 0;
+      if (item.start >= scrollTop) return false;
+      if (!instance.itemSizeCache.has(item.key)) return true;
+      return item.end <= scrollTop && instance.scrollDirection !== "backward";
+    };
+  }, [resolvedGetScrollElement, virtualizer]);
 
   const updateScrollGeometry = useCallback(() => {
     if (!configured) return;

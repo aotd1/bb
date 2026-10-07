@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { useEffect, useState } from "react";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type {
   PluginComposerApi,
@@ -601,6 +601,10 @@ describe("sidebar navigation test runtime", () => {
 });
 
 describe("loadPluginApp", () => {
+  beforeEach(() => {
+    messageActionRuns.length = 0;
+  });
+
   it("captures and validates app overlay registrations", async () => {
     function Overlay() {
       return <div>overlay</div>;
@@ -1501,6 +1505,7 @@ describe("loadPluginApp", () => {
         role: "assistant",
         text: "An answer.",
         sourceSeqEnd: 12,
+        experimental_messageSeq: 12,
       },
       selectedText: "answer",
       openPanel,
@@ -1526,7 +1531,6 @@ describe("loadPluginApp", () => {
   });
 
   it("renders leadingContent and drives messageActions through the stub", () => {
-    messageActionRuns.length = 0;
     const chatPanel = app.navPanels.find((panel) => panel.id === "chat")!;
     const slot = renderSlot(chatPanel, { subPath: "thr_42" });
     expect(
@@ -1543,6 +1547,7 @@ describe("loadPluginApp", () => {
         role: "assistant",
         text: "test message text",
         sourceSeqEnd: 1,
+        experimental_messageSeq: 1,
       },
     ]);
   });

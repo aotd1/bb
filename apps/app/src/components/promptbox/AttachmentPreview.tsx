@@ -110,7 +110,11 @@ function PastedTextPreview({
         ) : (
           <span className="truncate">{attachment.name}</span>
         )}
-        <span className="shrink-0">{formatByteSize(attachment.sizeBytes)}</span>
+        {attachment.sizeBytes === undefined ? null : (
+          <span className="shrink-0">
+            {formatByteSize(attachment.sizeBytes)}
+          </span>
+        )}
         {onRemove ? (
           <button
             type="button"
@@ -228,7 +232,10 @@ export function AttachmentPreview({
   );
   const attachmentImageItems = imageAttachments.map((attachment) => ({
     alt: attachment.name,
-    src: resolveAttachmentPreviewSrc(attachment.path, attachmentProjectId),
+    src: resolveAttachmentPreviewSrc(
+      attachment.path,
+      attachment.sourceProjectId ?? attachmentProjectId,
+    ),
   }));
   const hasMultipleAttachmentImages = imageAttachments.length > 1;
   const currentAttachmentImage =
@@ -325,7 +332,9 @@ export function AttachmentPreview({
                   <PastedTextPreview
                     key={attachment.path}
                     attachment={attachment}
-                    projectId={attachmentProjectId}
+                    projectId={
+                      attachment.sourceProjectId ?? attachmentProjectId
+                    }
                     onRemove={onRemoveAttachment}
                     onRetry={onRetryPastedText}
                     onInsert={onInsertPastedText}

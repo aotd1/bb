@@ -102,6 +102,7 @@ describe("AttachmentPreview", () => {
           {
             type: "localImage",
             path: "restored-2-def.png",
+            sourceProjectId: "proj_source",
             name: "restored.png",
             mimeType: "image/png",
             sizeBytes: 3,
@@ -115,7 +116,7 @@ describe("AttachmentPreview", () => {
     const images = getAllByRole("img");
     expect(images.map((image) => image.getAttribute("src"))).toEqual([
       "blob:local-1",
-      "/api/v1/projects/proj_1/attachments/content?path=restored-2-def.png",
+      "/api/v1/projects/proj_source/attachments/content?path=restored-2-def.png",
     ]);
     expect(
       images.every((image) => image.getAttribute("decoding") === "async"),
@@ -214,5 +215,32 @@ describe("AttachmentPreview", () => {
     expect(
       fileRemoveButton.firstElementChild?.classList.contains("size-4"),
     ).toBe(true);
+  });
+
+  it("opens a pasted attachment from its source project when the composer changes projects", () => {
+    const { getByRole, queryByText } = render(
+      <AttachmentPreview
+        attachmentProjectId="proj_destination"
+        attachments={[
+          {
+            type: "localFile",
+            sourceProjectId: "proj_source",
+            path: "pasted.txt",
+            name: "Pasted text.txt",
+            pastedText: {
+              id: "paste-source",
+              preview: "retained text",
+              status: "ready",
+            },
+          },
+        ]}
+        expandedImageIndex={null}
+        onExpandedImageIndexChange={vi.fn()}
+      />,
+    );
+    expect(
+      getByRole("link", { name: "Pasted text.txt" }).getAttribute("href"),
+    ).toBe("/api/v1/projects/proj_source/attachments/content?path=pasted.txt");
+    expect(queryByText(/NaN/)).toBeNull();
   });
 });

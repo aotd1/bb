@@ -516,11 +516,18 @@ vi.mock("@/components/secondary-panel/NewTabPage", () => ({
 vi.mock("@/components/secondary-panel/BrowserTabDeck", () => ({
   BrowserTabDeck: ({
     activeBrowserTabId,
+    addressFocusRequest,
   }: {
     activeBrowserTabId: string | null;
+    addressFocusRequest?: { tabId: string } | null;
   }) =>
     activeBrowserTabId === null ? null : (
-      <div data-testid="plugin-page-browser" />
+      <div
+        data-testid="plugin-page-browser"
+        data-address-focus-requested={
+          addressFocusRequest?.tabId === activeBrowserTabId
+        }
+      />
     ),
 }));
 
@@ -998,6 +1005,7 @@ describe("PluginPanelRightPanelHost", () => {
     ];
 
     renderHost("board", "task/123");
+    expect(await screen.findByText("Navigation for task/123")).toBeTruthy();
 
     expect(secondaryPanelState.splitPanelStateId).toBe(
       getPluginPagePanelStateId({
@@ -1019,7 +1027,6 @@ describe("PluginPanelRightPanelHost", () => {
         .getByTestId("shared-secondary-panel-region")
         .hasAttribute("hidden"),
     ).toBe(false);
-    expect(await screen.findByText("Navigation for task/123")).toBeTruthy();
     expect(
       screen
         .getByRole("button", { name: "Navigation" })
@@ -1345,7 +1352,7 @@ describe("PluginPanelRightPanelHost", () => {
     ).toBeTruthy();
   });
 
-  it("opens Browser without a plugin allowlist", async () => {
+  it("opens Browser with address focus without a plugin allowlist", async () => {
     browserState.available = true;
     renderHost();
     fireEvent.click(
@@ -1355,7 +1362,11 @@ describe("PluginPanelRightPanelHost", () => {
       await screen.findByRole("button", { name: "Open browser" }),
     );
 
-    expect(await screen.findByTestId("plugin-page-browser")).toBeTruthy();
+    expect(
+      (await screen.findByTestId("plugin-page-browser")).getAttribute(
+        "data-address-focus-requested",
+      ),
+    ).toBe("true");
     expect(secondaryPanelState.tabKinds).toContain("browser");
     fireEvent.click(screen.getByRole("button", { name: "Close Browser" }));
     expect(

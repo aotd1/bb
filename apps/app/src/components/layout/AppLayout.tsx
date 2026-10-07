@@ -76,14 +76,17 @@ import {
   getBbDesktopInfo,
   MACOS_CHROME_CONTROL_AXIS_CLASS,
   MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
+  MACOS_NAV_RAIL_SIDEBAR_TRIGGER_TOP_CLASS,
   MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
+  shouldDockMacosSidebarTriggerBelowTrafficLights,
   shouldReserveMacosTrafficLights,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import { useDataDirectoryCommand } from "@/hooks/useDataDirectoryCommand";
 import { usePluginSafeModeCommands } from "@/hooks/usePluginSafeModeCommands";
+import { usePluginCachePruneCommand } from "@/hooks/usePluginCachePruneCommand";
 import { useServerDaemonLogsCommand } from "@/hooks/useServerDaemonLogsCommand";
 import {
   getLegacyProjectComposeRoutePath,
@@ -102,15 +105,14 @@ import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import { useFaviconBadge } from "@/lib/favicon-color-preference";
 import { shouldShowFaviconAttentionDot } from "./faviconAttentionDot";
 import { AppLayoutSidebar } from "./AppLayoutSidebar";
+import { useNavigationRailExperiment } from "@/components/sidebar/navigationRailExperiment";
 import {
   useAppCommandHandler,
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import {
-  shouldRestoreIOSViewportOnKeyboardDismissal,
-  useMobileVisualViewportHeight,
-} from "./useMobileVisualViewportHeight";
+import { useMobileVisualViewportHeight } from "./useMobileVisualViewportHeight";
+import { isIOSWebKit } from "@/lib/ios-webkit";
 import { wsManager } from "@/lib/ws";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { findPaneByThread } from "@/lib/split-layout";
@@ -118,6 +120,7 @@ import { applyThreadOpenToLayout } from "@/views/thread-detail/splitThreadNaviga
 import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { BackToAppCommandHandler } from "./BackToAppCommandHandler";
+import { HistoryCommandHandlers } from "./HistoryCommandHandlers";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -211,17 +214,31 @@ function resetSidebarResizeDocumentState(): void {
   document.body.classList.remove("sidebar-resizing");
 }
 
+const MACOS_SIDEBAR_TRIGGER_DOCK_TRANSITION_CLASS =
+  "[transition:top_120ms_linear,left_120ms_linear_80ms,padding-left_120ms_linear_80ms]";
+const MACOS_SIDEBAR_TRIGGER_UNDOCK_TRANSITION_CLASS =
+  "[transition:left_120ms_linear,padding-left_120ms_linear,top_120ms_linear_80ms]";
+
 interface SidebarTriggerOverlayProps {
+  navigationRail: boolean;
   reserveMacosTrafficLights: boolean;
   usesDesktopChrome: boolean;
 }
 
 function SidebarTriggerOverlay({
+  navigationRail,
   reserveMacosTrafficLights,
   usesDesktopChrome,
 }: SidebarTriggerOverlayProps) {
   const isCompactViewport = useIsCompactViewport();
-  const { openMobile } = useSidebar();
+  const { open, openMobile } = useSidebar();
+  const dockBelowTrafficLights =
+    shouldDockMacosSidebarTriggerBelowTrafficLights({
+      reserveMacosTrafficLights,
+      navigationRail,
+      isCompactViewport,
+      isSidebarOpen: open,
+    });
   const panelShelfState = usePanelShelfState({
     isCompactViewport,
     isSidebarDrawerOpen: openMobile,
@@ -238,15 +255,23 @@ function SidebarTriggerOverlay({
       <div
         data-testid="app-desktop-sidebar-trigger"
         data-panel-shelf={panelShelfState}
+        data-placement={
+          dockBelowTrafficLights ? "below-traffic-lights" : "top-row"
+        }
         style={{ zIndex: APP_OVERLAY_LAYER.sidebarTrigger }}
         className={cn(
-          "fixed top-0",
+          "fixed motion-reduce:transition-none!",
           COMPACT_SHELF_HIDDEN_FIXED_CHROME_CLASS,
           CHROME_ROW_CLASS,
-          reserveMacosTrafficLights
+          dockBelowTrafficLights
+            ? [
+                MACOS_NAV_RAIL_SIDEBAR_TRIGGER_TOP_CLASS,
+                MACOS_SIDEBAR_TRIGGER_DOCK_TRANSITION_CLASS,
+              ]
+            : ["top-0", MACOS_SIDEBAR_TRIGGER_UNDOCK_TRANSITION_CLASS],
+          reserveMacosTrafficLights && !dockBelowTrafficLights
             ? MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS
-            : "left-0",
-          !reserveMacosTrafficLights && BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
+            : ["left-0", BROWSER_SIDEBAR_TRIGGER_INSET_CLASS],
           MACOS_WINDOW_DRAG_CLASS,
         )}
       >
@@ -392,7 +417,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const store = useStore();
   const [contentShell, setContentShell] = useState<HTMLDivElement | null>(null);
   const restoreIOSViewportOnKeyboardDismissal = useMemo(
-    () => shouldRestoreIOSViewportOnKeyboardDismissal(navigator),
+    () => isIOSWebKit(navigator),
     [],
   );
   useMobileVisualViewportHeight(
@@ -435,6 +460,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const navigate = useNavigate();
   const { appRoutePath, settingsRoutePath, toolsBackRoutePath } =
     useAppSettingsRouteMemory();
+  const navigationRail = useNavigationRailExperiment();
   const setRootComposeProjectId = useSetRootComposeProjectId();
   useEffect(
     () =>
@@ -480,6 +506,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   useServerDaemonLogsCommand();
   useDataDirectoryCommand();
   usePluginSafeModeCommands();
+  usePluginCachePruneCommand();
   const archivedSectionId = isArchivedView
     ? new URLSearchParams(location.search).get("sectionId")
     : null;
@@ -780,6 +807,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 {backToAppRoutePath !== null && !isSidebarResizing ? (
                   <BackToAppCommandHandler routePath={backToAppRoutePath} />
                 ) : null}
+                <HistoryCommandHandlers />
                 <AppLayoutSidebar
                   mode={
                     isGlobalSettingsView
@@ -790,6 +818,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                           ? "skills"
                           : "app"
                   }
+                  navigationRail={navigationRail}
                   onResizeMouseDown={handleResizeMouseDown}
                   isResizing={isSidebarResizing}
                   appRoutePath={appRoutePath}
@@ -821,6 +850,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                   </div>
                 </SidebarInset>
                 <SidebarTriggerOverlay
+                  navigationRail={navigationRail}
                   reserveMacosTrafficLights={reserveMacosTrafficLights}
                   usesDesktopChrome={usesDesktopChrome}
                 />
