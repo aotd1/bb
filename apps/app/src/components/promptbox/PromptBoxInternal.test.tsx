@@ -4949,6 +4949,34 @@ describe("PromptBoxInternal prompt actions", () => {
     expect(latestValue(changes) ?? "Before ").toBe("Before ");
   });
 
+  it("names pasted text after the attached and uploading pastes", async () => {
+    const onAttachFiles = vi.fn().mockResolvedValue(undefined);
+    const { promptBoxRef } = renderPromptBox("", {
+      props: {
+        attachments: {
+          onAttachFiles,
+          items: [
+            {
+              type: "localFile",
+              path: "Pasted-text-1.txt",
+              name: "Pasted text.txt",
+            },
+          ],
+          pendingUploads: [
+            { id: "upload", file: new File(["x"], "Pasted text 2.txt") },
+          ],
+        },
+      },
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    pastePlainText("x".repeat(5_000));
+
+    await waitFor(() => expect(onAttachFiles).toHaveBeenCalledTimes(1));
+    const [file] = onAttachFiles.mock.calls[0]![0] as File[];
+    expect(file!.name).toBe("Pasted text 3.txt");
+  });
+
   it.each([
     ["shorter pasted text", "x".repeat(4_999), []],
     [

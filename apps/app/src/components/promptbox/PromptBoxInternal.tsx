@@ -255,6 +255,14 @@ const COLLAPSING_GRID_CLASS =
   "grid transition-[grid-template-rows] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none";
 const VOICE_ACTION_TRANSITION_MS = 180;
 const PASTED_TEXT_ATTACHMENT_MIN_LENGTH = 5_000;
+
+function nextPastedTextName(takenNames: ReadonlySet<string>): string {
+  let name = "Pasted text.txt";
+  for (let index = 2; takenNames.has(name); index += 1) {
+    name = `Pasted text ${index}.txt`;
+  }
+  return name;
+}
 type VoiceActionTransition = "entering" | "active" | "exiting";
 
 export const DEFAULT_COMPOSER_SCOPE = {
@@ -1311,6 +1319,7 @@ export function PromptBoxInternal({
   const dispatchAppCommandKey = useAppCommandKeyDispatch();
   const syncTriggerStateRef = useRef<(editor: Editor) => void>(() => {});
   const onAttachFilesRef = useRef(onAttachFiles);
+  const attachmentNamesRef = useRef<ReadonlySet<string>>(new Set());
   const dismissedTriggerRef = useRef<DismissedTriggerRange | null>(null);
   const isRestoringAppliedMentionRef = useRef(false);
   const [composerMenu, setComposerMenuState] =
@@ -1543,6 +1552,13 @@ export function PromptBoxInternal({
   useEffect(() => {
     onAttachFilesRef.current = onAttachFiles;
   }, [onAttachFiles]);
+
+  useEffect(() => {
+    attachmentNamesRef.current = new Set([
+      ...attachments.map((attachment) => attachment.name),
+      ...(pendingUploads ?? []).map((upload) => upload.file.name),
+    ]);
+  }, [attachments, pendingUploads]);
 
   const revealEditorSelection = useCallback(() => {
     const currentEditor = editorRef.current;
@@ -1963,7 +1979,11 @@ export function PromptBoxInternal({
           ) {
             event.preventDefault();
             void attachFiles([
-              new File([plainText], "Pasted text.txt", { type: "text/plain" }),
+              new File(
+                [plainText],
+                nextPastedTextName(attachmentNamesRef.current),
+                { type: "text/plain" },
+              ),
             ]);
             return true;
           }
