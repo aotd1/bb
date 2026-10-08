@@ -4931,6 +4931,44 @@ describe("PromptBoxInternal prompt actions", () => {
     expect(onAttachFiles).toHaveBeenCalledWith([image]);
   });
 
+  it("attaches pasted text of 5,000 characters as a file and keeps the draft", async () => {
+    const onAttachFiles = vi.fn().mockResolvedValue(undefined);
+    const { changes, promptBoxRef } = renderPromptBox("Before ", {
+      onAttachFiles,
+    });
+    const text = `${"log line\r\n".repeat(499)}\t    tail\n`;
+    expect(text).toHaveLength(5_000);
+
+    await focusPromptEnd(promptBoxRef);
+    pastePlainText(text);
+
+    await waitFor(() => expect(onAttachFiles).toHaveBeenCalledTimes(1));
+    const [file] = onAttachFiles.mock.calls[0]![0] as File[];
+    expect(file!.name).toBe("Pasted text.txt");
+    expect(await file!.text()).toBe(text);
+    expect(latestValue(changes) ?? "Before ").toBe("Before ");
+  });
+
+  it.each([
+    ["shorter pasted text", "x".repeat(4_999), []],
+    [
+      "large pasted text beside a clipboard image",
+      "x".repeat(5_000),
+      [new File(["image"], "sheet.png", { type: "image/png" })],
+    ],
+  ])("keeps %s inline", async (_label, text, files) => {
+    const onAttachFiles = vi.fn().mockResolvedValue(undefined);
+    const { changes, promptBoxRef } = renderPromptBox("Before ", {
+      onAttachFiles,
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    pasteClipboard({ files, plainText: text });
+
+    await waitFor(() => expect(latestValue(changes)).toBe(`Before ${text}`));
+    expect(onAttachFiles.mock.calls).toEqual(files.length ? [[files]] : []);
+  });
+
   it.each(["available", "unavailable", "removed editor"])(
     "preserves marked HTML text while the image is %s",
     async (state) => {

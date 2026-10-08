@@ -539,7 +539,8 @@ describe("buildCodexConfig", () => {
   it("disables provider user-input requests without overriding web search", () => {
     const config = configFor(FULL_OPTIONS);
 
-    expect(config).toMatchObject({});
+    expect(config).toMatchObject({
+    });
     expect(JSON.stringify(config)).not.toContain("tools.web_search");
   });
 
@@ -682,27 +683,6 @@ describe("toCodexDynamicTools", () => {
 });
 
 describe("toCodexUserInput", () => {
-  it("passes the request separately from a named pasted file without expanding its content", () => {
-    expect(
-      toCodexUserInput([
-        { type: "text", text: "inspect errors", mentions: [] },
-        {
-          type: "localFile",
-          path: "/agent-storage/Attachments/Pasted-text.txt",
-          name: "Pasted text.txt",
-          sizeBytes: 3_638_577,
-          mimeType: "text/plain; charset=utf-8",
-        },
-      ]),
-    ).toEqual([
-      { type: "text", text: "inspect errors", text_elements: [] },
-      {
-        type: "text",
-        text: "[Attached file: Pasted text.txt: /agent-storage/Attachments/Pasted-text.txt]",
-        text_elements: [],
-      },
-    ]);
-  });
   it("maps every prompt input variant, rendering local files as text", () => {
     const input: PromptInput[] = [
       { type: "text", text: "hello", mentions: [] },

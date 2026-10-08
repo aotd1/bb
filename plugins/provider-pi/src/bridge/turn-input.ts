@@ -55,9 +55,7 @@ export function extractPiPromptInput(
         });
       } catch {}
     } else if (item.type === "localFile") {
-      chunks.push(
-        `[Attached file: ${item.name ? `${item.name}: ` : ""}${item.path}]`,
-      );
+      chunks.push(`[Attached file: ${item.path}]`);
     }
   }
   const [skill] = skills;

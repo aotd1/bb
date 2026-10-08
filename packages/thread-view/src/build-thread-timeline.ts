@@ -326,9 +326,7 @@ function toConversationAttachments(
     imageUrls: attachments.imageUrls ?? [],
     localImagePaths: attachments.localImagePaths ?? [],
     localFilePaths: attachments.localFilePaths ?? [],
-    ...(attachments.localFileDetails
-      ? { localFileDetails: attachments.localFileDetails }
-      : {}),
+    localFileDetails: attachments.localFileDetails ?? [],
   };
 }
 

@@ -140,6 +140,7 @@ describe("user message parsing", () => {
       imageUrls: [],
       localImagePaths: [],
       localFilePaths: ["/tmp/visible.md"],
+      localFileDetails: [],
     });
   });
 

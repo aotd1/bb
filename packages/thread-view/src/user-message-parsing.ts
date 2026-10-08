@@ -3,6 +3,7 @@ import {
   type PromptTextMention,
   type ThreadEvent,
 } from "@bb/domain";
+import type { TimelineConversationAttachments } from "@bb/server-contract";
 import type { EventMeta } from "./event-decode.js";
 import type { AcceptedClientRequest } from "./accepted-client-request-context.js";
 import type {
@@ -27,7 +28,7 @@ export function parsePromptInput(
   imageUrls: string[];
   localImagePaths: string[];
   localFilePaths: string[];
-  localFileDetails?: { path: string; name: string; sizeBytes?: number }[];
+  localFileDetails: TimelineConversationAttachments["localFileDetails"];
   mentions: PromptTextMention[];
 } | null {
   if (!Array.isArray(input) || input.length === 0) return null;
@@ -39,7 +40,7 @@ export function parsePromptInput(
   const imageUrls: string[] = [];
   const localImagePaths: string[] = [];
   const localFilePaths: string[] = [];
-  const localFileDetails: { path: string; name: string; sizeBytes?: number }[] =
+  const localFileDetails: TimelineConversationAttachments["localFileDetails"] =
     [];
   const mentions: PromptTextMention[] = [];
   let textOffset = 0;
@@ -89,9 +90,7 @@ export function parsePromptInput(
             localFileDetails.push({
               path: part.path,
               name: part.name,
-              ...(part.sizeBytes === undefined
-                ? {}
-                : { sizeBytes: part.sizeBytes }),
+              sizeBytes: part.sizeBytes ?? null,
             });
         }
         break;
@@ -111,7 +110,7 @@ export function parsePromptInput(
     imageUrls,
     localImagePaths,
     localFilePaths,
-    ...(localFileDetails.length > 0 ? { localFileDetails } : {}),
+    localFileDetails,
     mentions,
   };
 }
@@ -162,15 +161,15 @@ function buildAttachments(
     webImages: parsed.webImages,
     localImages: parsed.localImages,
     localFiles: parsed.localFiles,
-    ...(parsed.localFileDetails
-      ? { localFileDetails: parsed.localFileDetails }
-      : {}),
     ...(parsed.imageUrls.length > 0 ? { imageUrls: parsed.imageUrls } : {}),
     ...(parsed.localImagePaths.length > 0
       ? { localImagePaths: parsed.localImagePaths }
       : {}),
     ...(parsed.localFilePaths.length > 0
       ? { localFilePaths: parsed.localFilePaths }
+      : {}),
+    ...(parsed.localFileDetails.length > 0
+      ? { localFileDetails: parsed.localFileDetails }
       : {}),
   };
 }

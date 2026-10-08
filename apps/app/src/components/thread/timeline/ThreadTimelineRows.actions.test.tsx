@@ -482,6 +482,7 @@ describe("ThreadTimelineRows actions", () => {
               imageUrls: ["https://example.com/remote.png"],
               localImagePaths: [],
               localFilePaths: [],
+              localFileDetails: [],
             },
           }),
         ]}
@@ -528,6 +529,7 @@ describe("ThreadTimelineRows actions", () => {
               imageUrls: [],
               localImagePaths: [],
               localFilePaths: ["uploads/spec.md"],
+              localFileDetails: [],
             },
           }),
         ]}
@@ -683,6 +685,7 @@ describe("ThreadTimelineRows actions", () => {
               imageUrls: ["https://example.com/remote.png"],
               localImagePaths: ["uploads/screenshot.png"],
               localFilePaths: ["uploads/spec.md"],
+              localFileDetails: [],
             },
           }),
         ]}
@@ -747,6 +750,7 @@ describe("ThreadTimelineRows actions", () => {
               imageUrls: ["https://example.com/remote.png"],
               localImagePaths: ["uploads/screenshot.png"],
               localFilePaths: ["uploads/spec.md"],
+              localFileDetails: [],
             },
           }),
         ]}
@@ -789,6 +793,7 @@ describe("ThreadTimelineRows actions", () => {
               imageUrls: [],
               localImagePaths: [],
               localFilePaths: ["uploads/spec.md"],
+              localFileDetails: [],
             },
           }),
         ]}

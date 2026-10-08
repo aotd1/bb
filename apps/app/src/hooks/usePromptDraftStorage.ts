@@ -6,6 +6,7 @@ import {
   emptyPromptDraftState,
   isPromptDraftEmpty,
   parsePromptDraftStorage,
+  promptDraftToInput,
   serializePromptDraftStorage,
 } from "@bb/client-core";
 
@@ -356,10 +357,7 @@ export function usePromptDraftSnapshot(
 export function usePromptDraftInputEmpty(source: PromptDraftSource): boolean {
   return useSyncExternalStore(
     source.subscribe,
-    () => {
-      const draft = source.getCurrent();
-      return draft.text.trim().length === 0 && draft.attachments.length === 0;
-    },
+    () => promptDraftToInput(source.getCurrent()).length === 0,
     () => true,
   );
 }

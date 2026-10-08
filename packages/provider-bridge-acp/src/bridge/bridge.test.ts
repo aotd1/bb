@@ -1606,42 +1606,6 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("echo:hello there");
   });
 
-  it("delivers a pasted text file as a named resource link separate from the request", async () => {
-    const requestLog = join(workspaceDir, "pasted-text-requests.jsonl");
-    const filePath = join(workspaceDir, "pasted-text.txt");
-    writeFileSync(filePath, "x".repeat(3_638_577));
-    const { providerThreadId } = await startThread({
-      envVars: { FAKE_ACP_REQUEST_LOG: requestLog },
-    });
-    const turn = sendTurnRequest("turn/start", providerThreadId, {
-      input: [
-        { type: "text", text: "Inspect errors", mentions: [] },
-        {
-          type: "localFile",
-          path: filePath,
-          name: "Pasted text.txt",
-          sizeBytes: 3_638_577,
-          mimeType: "text/plain; charset=utf-8",
-        },
-      ],
-    });
-    await waitForResponse(turn);
-    await waitForTurnCompleted();
-    const prompt = loggedAcpRequests(requestLog).find(
-      (request) => request.method === "session/prompt",
-    )?.params?.prompt;
-    expect(prompt).toEqual([
-      { type: "text", text: "Inspect errors" },
-      {
-        type: "resource_link",
-        uri: `file://${filePath}`,
-        name: "Pasted text.txt",
-      },
-    ]);
-    expect(JSON.stringify(prompt).length).toBeLessThan(1_000);
-    expect(readFileSync(filePath).byteLength).toBe(3_638_577);
-  });
-
   it("rebuilds the agent with environment from a later turn", async () => {
     const envVars = { FAKE_ACP_LOAD_SESSION: "1", FAKE_ACP_PROMPT_ERROR: "1" };
     const { providerThreadId } = await startThread({ envVars });

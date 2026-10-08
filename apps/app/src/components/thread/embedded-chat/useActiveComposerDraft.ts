@@ -47,12 +47,12 @@ export function useActiveComposerDraft({
     [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
   );
   const currentPromptDraftInput = useMemo(
-    () => promptDraftToInput(currentPromptDraft, { forPreview: true }),
+    () => promptDraftToInput(currentPromptDraft),
     [currentPromptDraft],
   );
   const activeComposerDraft = inlineDraft ?? currentPromptDraft;
   const activeComposerDraftInput = useMemo(
-    () => promptDraftToInput(activeComposerDraft, { forPreview: true }),
+    () => promptDraftToInput(activeComposerDraft),
     [activeComposerDraft],
   );
 

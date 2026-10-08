@@ -314,16 +314,17 @@ function buildAddToChatAttachments(
       path,
       name: fileNameFromPath(path),
     })),
-    ...attachments.localFilePaths.map((path) => ({
-      type: "localFile" as const,
-      path,
-      name:
-        attachments.localFileDetails?.find((file) => file.path === path)
-          ?.name ?? fileNameFromPath(path),
-      sizeBytes: attachments.localFileDetails?.find(
+    ...attachments.localFilePaths.map((path) => {
+      const detail = attachments.localFileDetails.find(
         (file) => file.path === path,
-      )?.sizeBytes,
-    })),
+      );
+      return {
+        type: "localFile" as const,
+        path,
+        name: detail?.name ?? fileNameFromPath(path),
+        ...(detail?.sizeBytes == null ? {} : { sizeBytes: detail.sizeBytes }),
+      };
+    }),
   ];
 }
 

@@ -216,31 +216,4 @@ describe("AttachmentPreview", () => {
       fileRemoveButton.firstElementChild?.classList.contains("size-4"),
     ).toBe(true);
   });
-
-  it("opens a pasted attachment from its source project when the composer changes projects", () => {
-    const { getByRole, queryByText } = render(
-      <AttachmentPreview
-        attachmentProjectId="proj_destination"
-        attachments={[
-          {
-            type: "localFile",
-            sourceProjectId: "proj_source",
-            path: "pasted.txt",
-            name: "Pasted text.txt",
-            pastedText: {
-              id: "paste-source",
-              preview: "retained text",
-              status: "ready",
-            },
-          },
-        ]}
-        expandedImageIndex={null}
-        onExpandedImageIndexChange={vi.fn()}
-      />,
-    );
-    expect(
-      getByRole("link", { name: "Pasted text.txt" }).getAttribute("href"),
-    ).toBe("/api/v1/projects/proj_source/attachments/content?path=pasted.txt");
-    expect(queryByText(/NaN/)).toBeNull();
-  });
 });

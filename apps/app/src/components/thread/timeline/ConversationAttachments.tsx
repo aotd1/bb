@@ -20,7 +20,7 @@ interface ConversationImageItem {
 
 export interface ConversationAttachmentItems {
   filePaths: string[];
-  fileDetails?: TimelineConversationAttachments["localFileDetails"];
+  fileDetails: TimelineConversationAttachments["localFileDetails"];
   imageItems: ConversationImageItem[];
 }
 
@@ -80,6 +80,7 @@ export function buildAttachmentItems({
   if (!attachments) {
     return {
       filePaths: [],
+      fileDetails: [],
       imageItems: [],
     };
   }
@@ -99,9 +100,7 @@ export function buildAttachmentItems({
 
   return {
     filePaths: attachments.localFilePaths,
-    ...(attachments.localFileDetails
-      ? { fileDetails: attachments.localFileDetails }
-      : {}),
+    fileDetails: attachments.localFileDetails,
     imageItems,
   };
 }
@@ -175,11 +174,11 @@ export function ConversationAttachments({
                 ? "border-surface-selected-border bg-surface-raised"
                 : "border-border bg-surface-recessed",
             );
-            const detail = fileDetails?.find((file) => file.path === path);
+            const detail = fileDetails.find((file) => file.path === path);
             const label = (
               <span className="truncate">
                 {detail?.name ?? fileNameFromPath(path)}
-                {detail?.sizeBytes === undefined
+                {detail?.sizeBytes == null
                   ? ""
                   : ` · ${formatByteSize(detail.sizeBytes)}`}
               </span>

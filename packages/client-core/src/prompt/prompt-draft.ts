@@ -6,19 +6,9 @@ import {
 import { uploadedPromptAttachmentSchema } from "@bb/server-contract";
 import { z } from "zod";
 
-const pastedTextDraftSchema = z.object({
-  id: z.string(),
-  preview: z.string(),
-  status: z.enum(["preparing", "ready", "error"]),
-  error: z.string().optional(),
-});
-
 const draftAttachmentFields = uploadedPromptAttachmentSchema
   .omit({ sourceProjectId: true })
-  .extend({
-    sizeBytes: z.number().nonnegative().optional(),
-    pastedText: pastedTextDraftSchema.optional(),
-  });
+  .extend({ sizeBytes: z.number().nonnegative().optional() });
 
 const promptDraftAttachmentSchema = z.union([
   draftAttachmentFields.extend({
@@ -226,20 +216,7 @@ export function normalizePromptTextMentions(
     .sort((left, right) => left.start - right.start || left.end - right.end);
 }
 
-export function promptDraftToInput(
-  draft: PromptDraftState,
-  options: { forPreview?: boolean } = {},
-): PromptInput[] {
-  if (
-    !options.forPreview &&
-    draft.attachments.some(
-      (attachment) =>
-        attachment.pastedText !== undefined &&
-        attachment.pastedText.status !== "ready",
-    )
-  ) {
-    throw new Error("Finish preparing pasted text attachments before sending.");
-  }
+export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
   const input: PromptInput[] = [];
 
   const trimStartLength = draft.text.length - draft.text.trimStart().length;
@@ -266,8 +243,6 @@ export function promptDraftToInput(
   }
 
   for (const attachment of draft.attachments) {
-    if (attachment.pastedText && attachment.pastedText.status !== "ready")
-      continue;
     if (attachment.type === "localImage") {
       input.push({
         type: "localImage",

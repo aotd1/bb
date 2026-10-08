@@ -952,10 +952,17 @@ const ConversationRowContent = memo(function ConversationRowContent({
             input.push({ type: "localImage", path });
           }
           for (const path of row.attachments?.localFilePaths ?? []) {
-            const details = row.attachments?.localFileDetails?.find(
+            const detail = row.attachments?.localFileDetails.find(
               (file) => file.path === path,
             );
-            input.push({ type: "localFile", path, ...details });
+            input.push({
+              type: "localFile",
+              path,
+              ...(detail ? { name: detail.name } : {}),
+              ...(detail?.sizeBytes == null
+                ? {}
+                : { sizeBytes: detail.sizeBytes }),
+            });
           }
           onEditMessage({
             messageId: row.id,
@@ -1448,6 +1455,7 @@ type GeneratedMessageProps = ComponentProps<
 >;
 const NO_ATTACHMENTS: GeneratedMessageProps["attachmentItems"] = {
   filePaths: [],
+  fileDetails: [],
   imageItems: [],
 };
 const NO_MENTIONS: GeneratedMessageProps["mentions"] = [];

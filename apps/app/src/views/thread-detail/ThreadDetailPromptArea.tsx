@@ -1553,10 +1553,7 @@ export function ThreadDetailPromptArea({
     ],
   );
   const sentMessageEditInput = useMemo(
-    () =>
-      sentMessageEdit
-        ? promptDraftToInput(sentMessageEdit.draft, { forPreview: true })
-        : [],
+    () => (sentMessageEdit ? promptDraftToInput(sentMessageEdit.draft) : []),
     [sentMessageEdit],
   );
   const canSubmitSentMessageEdit =

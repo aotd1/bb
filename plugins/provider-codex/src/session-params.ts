@@ -572,7 +572,7 @@ export function toCodexUserInput(input: PromptInput[]): CodexUserInput[] {
       case "localFile":
         return {
           type: "text",
-          text: `[Attached file: ${chunk.name ? `${chunk.name}: ` : ""}${chunk.path}]`,
+          text: `[Attached file: ${chunk.path}]`,
           text_elements: [],
         };
     }

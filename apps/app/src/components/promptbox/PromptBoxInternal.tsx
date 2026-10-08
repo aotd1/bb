@@ -1,14 +1,5 @@
 import { VoiceInputButton } from "./VoiceInputButton";
 import { registerPaneComposerFocus } from "@/lib/pane-composer-focus";
-import {
-  isLargePastedText,
-  isLargeTextPaste,
-  PastedTextAttachments,
-} from "@/lib/pasted-text-attachments";
-import {
-  PastedTextHistory,
-  recordPastedTextAttachment,
-} from "./editor/pasted-text-history";
 import type { PendingAttachmentUpload } from "./usePendingAttachmentUploads";
 import { registerThreadMentionDropTarget } from "@/lib/thread-mention-drop";
 import type {
@@ -263,6 +254,7 @@ function mentionPillTrailingText(
 const COLLAPSING_GRID_CLASS =
   "grid transition-[grid-template-rows] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none";
 const VOICE_ACTION_TRANSITION_MS = 180;
+const PASTED_TEXT_ATTACHMENT_MIN_LENGTH = 5_000;
 type VoiceActionTransition = "entering" | "active" | "exiting";
 
 export const DEFAULT_COMPOSER_SCOPE = {
@@ -1259,22 +1251,12 @@ export function PromptBoxInternal({
   const {
     items: attachments = [],
     pendingUploads,
-    isAttaching: isAttachingFiles = false,
+    isAttaching = false,
     error: attachmentError = null,
     onAttachFiles,
     onRemove: onRemoveAttachment,
     projectId: attachmentProjectId,
   } = attachmentConfig;
-  const pastedTextBlocked = attachments.some(
-    (attachment) =>
-      attachment.pastedText !== undefined &&
-      attachment.pastedText.status !== "ready",
-  );
-  const isAttaching =
-    isAttachingFiles ||
-    attachments.some(
-      (attachment) => attachment.pastedText?.status === "preparing",
-    );
   const isPointerCoarse = usePointerCoarse();
   const isIPadOSWebKitDevice = useMemo(isIPadOSWebKit, []);
   const editorEnterKeyHint = isPointerCoarse ? "enter" : "send";
@@ -1486,70 +1468,6 @@ export function PromptBoxInternal({
     ? (compact.placeholder ?? placeholder)
     : placeholder;
   const pluginComposerHost = usePluginComposerHost();
-  const pastedTextTarget =
-    pluginComposerHost?.attachmentDraftTarget ?? pluginComposerHost;
-  const supportsAttachments = Boolean(onAttachFiles);
-  const pastedTextManager = useMemo(() => {
-    if (!pastedTextTarget || !attachmentProjectId || !onAttachFiles)
-      return null;
-    return new PastedTextAttachments(pastedTextTarget, (file) =>
-      sdk.projects.attachments.upload({
-        projectId: attachmentProjectId,
-        clientFile: file,
-      }),
-    );
-    // oxlint-disable-next-line react/exhaustive-deps -- Uploads retain the target captured for this draft identity.
-  }, [
-    pluginComposerHost?.textEffectKey,
-    attachmentProjectId,
-    supportsAttachments,
-  ]);
-  const pastedTextManagerRef = useRef(pastedTextManager);
-  pastedTextManagerRef.current = pastedTextManager;
-  useEffect(() => {
-    pastedTextManager?.resume();
-    return () => pastedTextManager?.dispose();
-  }, [pastedTextManager]);
-  const removeAttachment = useCallback(
-    (path: string) => {
-      const attachment = attachments.find((item) => item.path === path);
-      if (attachment?.pastedText && editorRef.current && pastedTextManager) {
-        recordPastedTextAttachment(
-          editorRef.current.view,
-          attachment.pastedText.id,
-          false,
-        );
-      } else {
-        onRemoveAttachment?.(path);
-      }
-    },
-    [attachments, onRemoveAttachment, pastedTextManager],
-  );
-  const insertPastedText = useCallback(
-    async (id: string) => {
-      const manager = pastedTextManager;
-      const currentEditor = editorRef.current;
-      if (!manager || !currentEditor) return;
-      const text = await manager.text(id);
-      if (
-        pastedTextManagerRef.current !== manager ||
-        currentEditor.isDestroyed ||
-        !pastedTextTarget
-          ?.getCurrent()
-          .attachments.some((item) => item.pastedText?.id === id)
-      )
-        return;
-      recordPastedTextAttachment(currentEditor.view, id, false);
-      currentEditor
-        .chain()
-        .focus()
-        .insertContent(
-          promptEditorInlineContentFromValue({ text, mentions: [] }),
-        )
-        .run();
-    },
-    [pastedTextManager, pastedTextTarget],
-  );
   const composerInputLocked = useComposerInputLock(
     pluginComposerHost?.textEffectKey ?? null,
   );
@@ -1826,10 +1744,6 @@ export function PromptBoxInternal({
         resolveThreads: (threadIds, signal) =>
           sdk.threads.resolveMentions({ threadIds, signal }),
       }),
-      PastedTextHistory.configure({
-        onChange: (id, present) =>
-          pastedTextManagerRef.current?.setPresent(id, present),
-      }),
     ],
     [],
   );
@@ -1872,22 +1786,6 @@ export function PromptBoxInternal({
         clipboardTextSerializer: (slice, view) =>
           promptEditorClipboardTextFromSlice(slice, view.state.schema),
         handleDOMEvents: {
-          paste: (view, event) => {
-            const manager = pastedTextManagerRef.current;
-            if (
-              !view.editable ||
-              !manager ||
-              !isLargeTextPaste(event.clipboardData)
-            )
-              return false;
-            event.preventDefault();
-            const id = manager.create(
-              event.clipboardData?.getData("text/plain") ?? "",
-            );
-            recordPastedTextAttachment(view, id, true);
-            view.focus();
-            return true;
-          },
           auxclick: (_view, event) => {
             return suppressPromptEditorAnchorActivation(event);
           },
@@ -2055,18 +1953,21 @@ export function PromptBoxInternal({
             return true;
           }
 
+          const plainText = event.clipboardData?.getData("text/plain") ?? "";
           if (attachFiles && pastedFiles.length > 0) {
             event.preventDefault();
             void attachFiles(pastedFiles);
-            if (
-              isLargePastedText(
-                event.clipboardData?.getData("text/plain") ?? "",
-              )
-            )
-              return true;
+          } else if (
+            attachFiles &&
+            plainText.length >= PASTED_TEXT_ATTACHMENT_MIN_LENGTH
+          ) {
+            event.preventDefault();
+            void attachFiles([
+              new File([plainText], "Pasted text.txt", { type: "text/plain" }),
+            ]);
+            return true;
           }
 
-          const plainText = event.clipboardData?.getData("text/plain") ?? "";
           const sliceHasBlockquote = promptEditorSliceHasBlockquote(slice);
           if (sliceHasBlockquote || plainTextHasQuoteLine(plainText)) {
             event.preventDefault();
@@ -2975,7 +2876,6 @@ export function PromptBoxInternal({
     action.onSubmit !== undefined &&
     (!action.requiresInput || hasSubmittableInput) &&
     !isAttaching &&
-    !pastedTextBlocked &&
     !isSubmitting &&
     !submitDisabled &&
     !showVoiceActionGroup;
@@ -2987,16 +2887,14 @@ export function PromptBoxInternal({
     ? null
     : isAttaching
       ? "Uploading attachments..."
-      : pastedTextBlocked
-        ? "Retry, remove, or insert the unfinished pasted text before sending."
-        : (submitDisabledReason ??
-          (showVoiceActionGroup
-            ? "Finish voice input first."
-            : isSubmitting
-              ? "Submitting..."
-              : hasSubmittableInput
-                ? "This composer can't submit right now."
-                : "Type a message first."));
+      : (submitDisabledReason ??
+        (showVoiceActionGroup
+          ? "Finish voice input first."
+          : isSubmitting
+            ? "Submitting..."
+            : hasSubmittableInput
+              ? "This composer can't submit right now."
+              : "Type a message first."));
   const composerEditorState = useMemo<ComposerEditorState>(
     () => ({
       layout: composerLayout,
@@ -3598,9 +3496,7 @@ export function PromptBoxInternal({
               attachmentProjectId={attachmentProjectId}
               expandedImageIndex={expandedImageIndex}
               onExpandedImageIndexChange={setExpandedImageIndex}
-              onRemoveAttachment={removeAttachment}
-              onRetryPastedText={(id) => void pastedTextManager?.prepare(id)}
-              onInsertPastedText={insertPastedText}
+              onRemoveAttachment={onRemoveAttachment}
             />
           ) : null}
           <div
@@ -3720,11 +3616,7 @@ export function PromptBoxInternal({
                   attachmentProjectId={attachmentProjectId}
                   expandedImageIndex={expandedImageIndex}
                   onExpandedImageIndexChange={setExpandedImageIndex}
-                  onRemoveAttachment={removeAttachment}
-                  onRetryPastedText={(id) =>
-                    void pastedTextManager?.prepare(id)
-                  }
-                  onInsertPastedText={insertPastedText}
+                  onRemoveAttachment={onRemoveAttachment}
                 />
 
                 {attachmentError ? (

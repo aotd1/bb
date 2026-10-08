@@ -126,7 +126,6 @@
     "bb-plugin-secrets": "workspace:*",
     "bb-plugin-thread-list": "workspace:*",
     "cacache": "^20.0.4",
-    "fake-indexeddb": "^6.2.5",
     "lightningcss": "^1.32.0",
     "mdast-util-to-hast": "^13.2.1",
     "micromark-util-types": "^2.0.2",

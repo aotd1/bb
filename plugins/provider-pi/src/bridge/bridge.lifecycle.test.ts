@@ -114,7 +114,7 @@ it("stop{release} ends the child after a local-file-only turn", async () => {
       .some(
         (delta) =>
           delta.kind === "item.textDelta" &&
-          String(delta.text).includes(`[Attached file: notes.md: ${filePath}]`),
+          String(delta.text).includes(`[Attached file: ${filePath}]`),
       ),
   ).toBe(true);
   const stop = await harness.request((nextId += 1), "thread/stop", {

@@ -135,50 +135,6 @@ describe("prompt draft helpers", () => {
     ).toBe(false);
   });
 
-  it.each(["preparing", "error", "ready"] as const)(
-    "restores a %s pasted attachment and keeps recovery metadata out of agent input",
-    (status) => {
-      const draft = parsePromptDraftStorage(
-        JSON.stringify({
-          text: "Inspect errors",
-          mentions: [],
-          attachments: [
-            {
-              type: "localFile",
-              path: "uploads/pasted.txt",
-              sourceProjectId: "proj_source",
-              name: "Pasted text.txt",
-              sizeBytes: 3638577,
-              mimeType: "text/plain; charset=utf-8",
-              pastedText: { id: "paste-1", preview: "synthetic", status },
-            },
-          ],
-        }),
-      );
-      expect(draft.attachments[0]?.pastedText).toEqual({
-        id: "paste-1",
-        preview: "synthetic",
-        status,
-      });
-      expect(isPromptDraftEmpty(draft)).toBe(false);
-      if (status !== "ready") {
-        expect(() => promptDraftToInput(draft)).toThrow("Finish preparing");
-        expect(promptDraftToInput(draft, { forPreview: true })).toEqual([
-          { type: "text", text: "Inspect errors", mentions: [] },
-        ]);
-      } else {
-        expect(promptDraftToInput(draft)[1]).toEqual({
-          type: "localFile",
-          path: "uploads/pasted.txt",
-          sourceProjectId: "proj_source",
-          name: "Pasted text.txt",
-          sizeBytes: 3638577,
-          mimeType: "text/plain; charset=utf-8",
-        });
-      }
-    },
-  );
-
   it("maps draft text and attachments to prompt input list", () => {
     const input = promptDraftToInput({
       text: "  Ship this patch  ",
