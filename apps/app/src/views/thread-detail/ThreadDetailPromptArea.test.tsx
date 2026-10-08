@@ -75,7 +75,7 @@ const mocks = vi.hoisted(() => ({
     clearIfCurrentMatches: vi.fn(),
     getCurrent: vi.fn(),
     mentions: [] as PromptTextMention[],
-    removeAttachment: vi.fn(),
+    updateAttachments: vi.fn(),
     restoreIfEmpty: vi.fn(),
     setDraft: vi.fn(),
     setTextAndMentions: vi.fn(),

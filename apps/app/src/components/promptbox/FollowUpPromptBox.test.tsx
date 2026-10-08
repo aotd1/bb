@@ -262,7 +262,7 @@ function createFollowUpPromptBoxProps(
       isAttaching: false,
       error: null,
       onAttachFiles: vi.fn(),
-      onRemove: vi.fn(),
+      onUpdate: vi.fn(),
     },
     stack: null,
     composer: {

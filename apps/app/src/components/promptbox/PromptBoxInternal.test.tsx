@@ -7,12 +7,14 @@ import { registerComposerMenuPlugins } from "@/test/fixtures/composer-menu";
 import { resolveThreadMentionDropTarget } from "@/lib/thread-mention-drop";
 import { sdk } from "@/lib/sdk";
 import type { PromptTextMention } from "@bb/domain";
+import { createDeferredPromise } from "@bb/test-helpers";
 import type { TiptapEditorHTMLElement } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { EditorView } from "@tiptap/pm/view";
 import {
   createRef,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -84,6 +86,7 @@ import {
 } from "./mentions/prompt-mention-clipboard";
 import { orderPromptMentionSuggestions } from "@/hooks/promptMentionCandidates";
 import type {
+  PromptDraftAttachment,
   PromptMentionSuggestion,
   ProviderCommandSuggestion,
 } from "@bb/client-core";
@@ -286,7 +289,9 @@ function renderPromptBox(
     mentionTriggers?: TypeaheadConfig["mention"]["triggers"];
     mentionSuggestions?: readonly PromptMentionSuggestion[];
     commandSuggestions?: TypeaheadConfig["command"]["suggestions"];
-    onAttachFiles?: (files: File[]) => Promise<void> | void;
+    onAttachFiles?: (files: File[]) => Promise<PromptDraftAttachment[]>;
+    upload?: (files: File[]) => Promise<PromptDraftAttachment[]>;
+    initialAttachments?: PromptDraftAttachment[];
     compact?: boolean;
     props?: Partial<PromptBoxProps>;
   } = {},
@@ -297,9 +302,17 @@ function renderPromptBox(
   const onCommandQueryChange = vi.fn();
   const onSubmit = vi.fn();
   const promptBoxRef = createRef<PromptBoxHandle>();
+  const attachmentState = { items: options.initialAttachments ?? [] };
 
   function PromptBoxHarness() {
     const [value, setValue] = useState(initialValue);
+    const [attachmentItems, setAttachmentItems] = useState(
+      attachmentState.items,
+    );
+    useEffect(() => {
+      attachmentState.items = attachmentItems;
+    }, [attachmentItems]);
+    const upload = options.upload;
     const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>(
       options.initialMentionRanges ?? [],
     );
@@ -341,7 +354,19 @@ function renderPromptBox(
             onCommandQueryChange,
           })}
           mentionMenuPlacement="bottom"
-          attachments={{ onAttachFiles: options.onAttachFiles }}
+          attachments={
+            upload
+              ? {
+                  items: attachmentItems,
+                  onAttachFiles: async (files) => {
+                    const added = await upload(files);
+                    setAttachmentItems((current) => [...current, ...added]);
+                    return added;
+                  },
+                  onUpdate: (update) => setAttachmentItems(update),
+                }
+              : { onAttachFiles: options.onAttachFiles }
+          }
           promptActions={promptActions}
           promptBoxRef={promptBoxRef}
           {...options.props}
@@ -371,7 +396,24 @@ function renderPromptBox(
     onCommandQueryChange,
     onSubmit,
     promptBoxRef,
+    attachmentPaths: () => attachmentState.items.map((item) => item.path),
   };
+}
+
+function pressUndo({ redo = false }: { redo?: boolean } = {}) {
+  fireEvent.keyDown(getPromptEditorElement(), {
+    key: "z",
+    ctrlKey: true,
+    shiftKey: redo,
+  });
+}
+
+function uploadedAs(files: File[]): PromptDraftAttachment[] {
+  return files.map((file) => ({
+    type: "localFile",
+    path: `uploads/${file.name}`,
+    name: file.name,
+  }));
 }
 
 function dispatchThroughEditorTarget({
@@ -2750,7 +2792,7 @@ describe("PromptBoxInternal compact layout", () => {
       { type: "localFile", name: "notes.txt", path: "notes.txt", sizeBytes: 1 },
     ];
     const props = createPromptBoxProps({
-      attachments: { items, onRemove: vi.fn() },
+      attachments: { items, onUpdate: vi.fn() },
       compact: { isCompact: true },
     });
     const { rerender } = render(<PromptBoxInternal {...props} />);
@@ -4918,7 +4960,7 @@ describe("PromptBoxInternal prompt actions", () => {
   });
 
   it("pastes clipboard text and attaches the clipboard image", async () => {
-    const onAttachFiles = vi.fn().mockResolvedValue(undefined);
+    const onAttachFiles = vi.fn().mockResolvedValue([]);
     const { changes, promptBoxRef } = renderPromptBox("Before ", {
       onAttachFiles,
     });
@@ -4932,7 +4974,7 @@ describe("PromptBoxInternal prompt actions", () => {
   });
 
   it("attaches pasted text of 5,000 characters as a file and keeps the draft", async () => {
-    const onAttachFiles = vi.fn().mockResolvedValue(undefined);
+    const onAttachFiles = vi.fn().mockResolvedValue([]);
     const { changes, promptBoxRef } = renderPromptBox("Before ", {
       onAttachFiles,
     });
@@ -4949,8 +4991,104 @@ describe("PromptBoxInternal prompt actions", () => {
     expect(latestValue(changes) ?? "Before ").toBe("Before ");
   });
 
+  it("undoes and redoes a pasted file without uploading it again", async () => {
+    const upload = vi.fn(async (files: File[]) => uploadedAs(files));
+    const { attachmentPaths, promptBoxRef } = renderPromptBox("", { upload });
+    const image = new File(["image"], "photo.png", { type: "image/png" });
+
+    await focusPromptEnd(promptBoxRef);
+    pasteClipboard({ files: [image] });
+    await waitFor(() =>
+      expect(attachmentPaths()).toEqual(["uploads/photo.png"]),
+    );
+
+    pressUndo();
+    await waitFor(() => expect(attachmentPaths()).toEqual([]));
+    pressUndo({ redo: true });
+    await waitFor(() =>
+      expect(attachmentPaths()).toEqual(["uploads/photo.png"]),
+    );
+    expect(upload).toHaveBeenCalledTimes(1);
+  });
+
+  it("undoes a large paste into its text, then to before the paste", async () => {
+    const upload = vi.fn(async (files: File[]) => uploadedAs(files));
+    const { attachmentPaths, changes, promptBoxRef } = renderPromptBox(
+      "Before ",
+      { upload },
+    );
+    const text = "log line\n".repeat(600).trimEnd();
+
+    await focusPromptEnd(promptBoxRef);
+    pastePlainText(text);
+    await waitFor(() =>
+      expect(attachmentPaths()).toEqual(["uploads/Pasted text.txt"]),
+    );
+    expect(latestValue(changes) ?? "Before ").toBe("Before ");
+
+    pressUndo();
+    await waitFor(() => expect(latestValue(changes)).toBe(`Before ${text}`));
+    expect(attachmentPaths()).toEqual([]);
+
+    pressUndo();
+    await waitFor(() => expect(latestValue(changes)).toBe("Before "));
+    expect(attachmentPaths()).toEqual([]);
+
+    pressUndo({ redo: true });
+    await waitFor(() => expect(latestValue(changes)).toBe(`Before ${text}`));
+    pressUndo({ redo: true });
+    await waitFor(() => expect(latestValue(changes)).toBe("Before "));
+    expect(attachmentPaths()).toEqual(["uploads/Pasted text.txt"]);
+    expect(upload).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores a removed attachment to its original position", async () => {
+    const { attachmentPaths, promptBoxRef } = renderPromptBox("", {
+      upload: async (files) => uploadedAs(files),
+      initialAttachments: uploadedAs([
+        new File(["a"], "a.txt"),
+        new File(["b"], "b.txt"),
+        new File(["c"], "c.txt"),
+      ]),
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    fireEvent.click(screen.getByRole("button", { name: "Remove b.txt" }));
+    await waitFor(() =>
+      expect(attachmentPaths()).toEqual(["uploads/a.txt", "uploads/c.txt"]),
+    );
+
+    pressUndo();
+    await waitFor(() =>
+      expect(attachmentPaths()).toEqual([
+        "uploads/a.txt",
+        "uploads/b.txt",
+        "uploads/c.txt",
+      ]),
+    );
+  });
+
+  it("keeps a file undone during its upload out of the draft until redo", async () => {
+    const pending = createDeferredPromise<PromptDraftAttachment[]>();
+    const { attachmentPaths, promptBoxRef } = renderPromptBox("", {
+      upload: () => pending.promise,
+    });
+    const file = new File(["log"], "server.log");
+
+    await focusPromptEnd(promptBoxRef);
+    pasteClipboard({ files: [file] });
+    pressUndo();
+    await act(async () => pending.resolve(uploadedAs([file])));
+    await waitFor(() => expect(attachmentPaths()).toEqual([]));
+
+    pressUndo({ redo: true });
+    await waitFor(() =>
+      expect(attachmentPaths()).toEqual(["uploads/server.log"]),
+    );
+  });
+
   it("names pasted text after the attached and uploading pastes", async () => {
-    const onAttachFiles = vi.fn().mockResolvedValue(undefined);
+    const onAttachFiles = vi.fn().mockResolvedValue([]);
     const { promptBoxRef } = renderPromptBox("", {
       props: {
         attachments: {
@@ -4985,7 +5123,7 @@ describe("PromptBoxInternal prompt actions", () => {
       [new File(["image"], "sheet.png", { type: "image/png" })],
     ],
   ])("keeps %s inline", async (_label, text, files) => {
-    const onAttachFiles = vi.fn().mockResolvedValue(undefined);
+    const onAttachFiles = vi.fn().mockResolvedValue([]);
     const { changes, promptBoxRef } = renderPromptBox("Before ", {
       onAttachFiles,
     });
@@ -5000,7 +5138,7 @@ describe("PromptBoxInternal prompt actions", () => {
   it.each(["available", "unavailable", "removed editor"])(
     "preserves marked HTML text while the image is %s",
     async (state) => {
-      const onAttachFiles = vi.fn().mockResolvedValue(undefined);
+      const onAttachFiles = vi.fn().mockResolvedValue([]);
       let resolveImage: (response: Response) => void = () => {};
       const fetchImage = vi.fn().mockImplementation(
         () =>
