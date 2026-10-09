@@ -1098,16 +1098,6 @@ function RootComposeSurface({
       if (resource.kind === "project") {
         return () => navigate(getProjectComposeRoutePath(resource.projectId));
       }
-      if (resource.kind === "attachment") {
-        const attachmentProjectId = isProjectless ? null : projectId;
-        if (!attachmentProjectId) return null;
-        return () =>
-          openAttachment({
-            name: resource.label,
-            path: resource.path,
-            projectId: attachmentProjectId,
-          });
-      }
       if (resource.kind !== "path" || resource.entryKind !== "file") {
         return null;
       }
@@ -1142,7 +1132,6 @@ function RootComposeSurface({
       };
     },
     [
-      openAttachment,
       isProjectless,
       handleOpenLiveFilePreview,
       navigate,

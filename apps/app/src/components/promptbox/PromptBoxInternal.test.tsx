@@ -3,6 +3,10 @@ import { buildMessageClipboardHtml } from "../../lib/message-clipboard";
 
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { focusPaneComposer } from "@/lib/pane-composer-focus";
+import {
+  AttachmentOpenerContext,
+  type OpenAttachmentRequest,
+} from "@/components/secondary-panel/AttachmentOpenerContext";
 import { registerComposerMenuPlugins } from "@/test/fixtures/composer-menu";
 import { resolveThreadMentionDropTarget } from "@/lib/thread-mention-drop";
 import { sdk } from "@/lib/sdk";
@@ -292,6 +296,7 @@ function renderPromptBox(
     onAttachFiles?: (files: File[]) => Promise<PromptDraftAttachment[]>;
     upload?: (files: File[]) => Promise<PromptDraftAttachment[]>;
     initialAttachments?: PromptDraftAttachment[];
+    openAttachment?: (request: OpenAttachmentRequest) => void;
     compact?: boolean;
     props?: Partial<PromptBoxProps>;
   } = {},
@@ -377,7 +382,9 @@ function renderPromptBox(
 
   const ui = (
     <MemoryRouter>
-      <PromptBoxHarness />
+      <AttachmentOpenerContext.Provider value={options.openAttachment ?? null}>
+        <PromptBoxHarness />
+      </AttachmentOpenerContext.Provider>
     </MemoryRouter>
   );
   const view = render(
@@ -4386,6 +4393,43 @@ describe("PromptBoxInternal mention triggers", () => {
         },
       },
     ]);
+  });
+
+  it("opens an attachment mention from the attachment's source project", async () => {
+    const openAttachment = vi.fn();
+    renderPromptBox("Read @spec.txt", {
+      upload: async (files) => uploadedAs(files),
+      initialAttachments: [
+        {
+          type: "localFile",
+          path: "uploads/spec.txt",
+          name: "spec.txt",
+          sourceProjectId: "proj_source",
+        },
+      ],
+      initialMentionRanges: [
+        {
+          start: 5,
+          end: 14,
+          resource: {
+            kind: "attachment",
+            path: "uploads/spec.txt",
+            label: "spec.txt",
+          },
+        },
+      ],
+      openAttachment,
+    });
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Open .*spec\.txt/u }),
+    );
+
+    expect(openAttachment).toHaveBeenCalledWith({
+      name: "spec.txt",
+      path: "uploads/spec.txt",
+      projectId: "proj_source",
+    });
   });
 
   it("keeps a dismissed multiword occurrence closed as its query extends", async () => {

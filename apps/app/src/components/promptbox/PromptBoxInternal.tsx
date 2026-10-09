@@ -125,6 +125,8 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS } from "./banner/PromptStackCard";
 import { AttachmentPreview, isImageAttachment } from "./AttachmentPreview";
+import { useAttachmentOpener } from "@/components/secondary-panel/AttachmentOpenerContext";
+import { isProjectAttachmentPath } from "@/lib/file-content-urls";
 import {
   withAttachmentMentionSuggestions,
   type AttachmentMentionSuggestion,
@@ -1341,6 +1343,30 @@ export function PromptBoxInternal({
     onUpdate: onUpdateAttachments,
     projectId: attachmentProjectId,
   } = attachmentConfig;
+  const openAttachment = useAttachmentOpener();
+  const resolveEditorMentionLink: PromptMentionLinkResolver = (resource) => {
+    if (resource.kind !== "attachment") {
+      return mentionResolveLink?.(resource) ?? null;
+    }
+    const attachment = attachments.find(
+      (item) => item.path === resource.path,
+    );
+    const projectId = attachment?.sourceProjectId ?? attachmentProjectId;
+    if (
+      !attachment ||
+      !openAttachment ||
+      !projectId ||
+      !isProjectAttachmentPath(attachment)
+    ) {
+      return null;
+    }
+    return () =>
+      openAttachment({
+        name: attachment.name,
+        path: attachment.path,
+        projectId,
+      });
+  };
   const isPointerCoarse = usePointerCoarse();
   const isIPadOSWebKitDevice = useMemo(isIPadOSWebKit, []);
   const editorEnterKeyHint = isPointerCoarse ? "enter" : "send";
@@ -3838,7 +3864,7 @@ export function PromptBoxInternal({
               isCompactLayout={showCompactLayout}
               minHeight={minHeight}
               layout={editorLayout}
-              resolveMentionLink={mentionResolveLink}
+              resolveMentionLink={resolveEditorMentionLink}
             />
           </div>
 
