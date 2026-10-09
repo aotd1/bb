@@ -43,16 +43,21 @@ Read the installed SDK declarations for the exact current signatures.
 - `useComposers`
 - `useComposerView` — deprecated, runtime-only for older plugins; use `useComposer`
 - `experimental_useSidebarThreads`
-- `experimental_useSidebarThreadActions`
+- `experimental_useSidebarThreadActions` — deprecated, runtime-only for older
+  plugins; use the thread action registry, `useSdk().threads`, and
+  `useBbNavigate()`
+- `experimental_useArchiveEnvironmentThreads` — archive an environment's
+  threads with bb's pane cleanup, route repair, and Undo toast
+- `experimental_useThreadActions` — every thread action for one thread, in
+  menu order, or only `keys` for a row's quick actions
+- `experimental_useThreadActionRegistrations` — every registered thread
+  action's static title and icon, for a quick-action picker
+- `experimental_ThreadActionsMenu` — bb's thread menu behind your trigger
+- `experimental_ThreadActionsContextMenu` — bb's thread menu on right-click
+  or long-press
+- `experimental_THREAD_ACTION_GROUPS` — bb's thread menu group names
 - `experimental_useSidebarThreadPullRequest`
 - `experimental_useSidebarThreadSplit`
-- `experimental_useSidebarNavigation` — the sidebar navigation items in the
-  user's saved order, the active item, and host actions to activate, hide,
-  reorder, and customize them
-- `experimental_useSidebarNavigationSplit` — drag-to-split support for one
-  navigation item
-- `experimental_SidebarNavigationIcon` — bb's artwork for a navigation item's
-  icon, including plugin branding
 - `useSidebarThreadDraft` — whether the composer holds an unsent draft for
   one thread, for the pencil glyph bb's row paints
 - `useSidebarThreadDraftIds` — every thread id with an unsent draft, for
@@ -73,6 +78,7 @@ Read the installed SDK declarations for the exact current signatures.
   `bb` CLI and the backend `bb.sdk` expose
 - `experimental_useProviders`
 - `experimental_useCodeTheme`
+- `experimental_copyToClipboard`
 
 ## Type exports
 
@@ -106,18 +112,6 @@ Read the installed SDK declarations for the exact current signatures.
   `app.slots.experimental_machineProviderInputs`
 - `PluginSidebarFooterActionProps`
 - `ExperimentalSidebarFooterDisclosureProps`
-- `ExperimentalSidebarNavigationShortcut`
-- `ExperimentalSidebarNavigationAction`
-- `ExperimentalSidebarNavigationIcon`
-- `ExperimentalSidebarNavigationItem`
-- `ExperimentalSidebarNavigationActivationOptions`
-- `ExperimentalSidebarNavigationActions`
-- `ExperimentalSidebarNavigationState`
-- `ExperimentalSidebarNavigationSplit`
-- `ExperimentalSidebarNavigationSplitOptions`
-- `ExperimentalSidebarNavigationIconProps`
-- `ExperimentalSidebarNavigationProps`
-- `ExperimentalSidebarHeaderProps`
 - `PluginThreadListProps`
 - `PluginThreadHeaderActionProps`
 - `ExperimentalPluginBrowserToolbarActionProps`
@@ -161,8 +155,6 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalSidebarFooterItemRegistration`
 - `ExperimentalSidebarFooterDisclosureController`
 - `ExperimentalSidebarFooter`
-- `ExperimentalSidebarNavigationRegistration`
-- `ExperimentalSidebarHeaderRegistration`
 - `PluginSidebarThreadIndicator`
 - `PluginSidebarThreadActivity`
 - `PluginSidebarThread`
@@ -175,7 +167,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginCodeThemeTokenRule`
 - `PluginCodeThemeData`
 - `PluginCodeThemeState`
-- `PluginSidebarThreadActions`
+- `ExperimentalClipboardContent`
 - `PluginSidebarThreadDraftState`
 - `PluginSidebarThreadRowStatus`
 - `PluginSidebarThreadShortcut`
@@ -185,6 +177,23 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginBoundThreadsArea`
 - `PluginBrowserBbSdk`
 - `PluginThreadHeaderActionRegistration`
+- `PluginThreadActionTarget`
+- `PluginThreadActionChoice`
+- `PluginThreadActionChoices`
+- `PluginThreadActionRunInput`
+- `PluginThreadAction`
+- `PluginThreadActionItemInput` — what a registration's `item` receives
+- `PluginThreadActionRegistration` — the registration accepted by
+  `app.slots.experimental_threadAction`
+- `PluginBoundThreadAction`
+- `PluginThreadActionEntry` — one row of `experimental_useThreadActions`
+- `PluginThreadActionRegistrationInfo`
+- `PluginThreadActionsOptions`
+- `PluginThreadActionsInlineItem`
+- `PluginThreadActionsTriggerProps` — what a thread menu's `trigger` must
+  spread onto its button
+- `PluginThreadActionsMenuProps`
+- `PluginThreadActionsContextMenuProps`
 - `ExperimentalPluginBrowserToolbarActionRegistration`
 - `PluginSidebarSplitPane`
 - `PluginSidebarSplitLayout`

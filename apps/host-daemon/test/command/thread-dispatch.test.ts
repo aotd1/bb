@@ -701,7 +701,7 @@ describe("thread command dispatch", () => {
           fetchProjectAttachment,
         },
       ),
-    ).resolves.toEqual({});
+    ).resolves.toEqual({ trace: { spans: [] } });
 
     expect(fetchProjectAttachment).toHaveBeenCalledTimes(1);
     expect(harness.runtimeState.resumedThreadId).toBe(threadId);
@@ -1724,8 +1724,8 @@ describe("thread command dispatch", () => {
       harness.dispatchOptions(),
     );
 
-    expect(runResult).toEqual({});
-    expect(steerResult).toEqual({});
+    expect(runResult).toEqual({ trace: { spans: [] } });
+    expect(steerResult).toEqual({ trace: { spans: [] } });
     expect(harness.runtimeState.ranTurnText).toBe("hello");
     expect(harness.runtimeState.ranTurnClientRequestId).toBe(runRequestId);
     expect(harness.runtimeState.steeredTurnId).toBe("turn-1");
@@ -1822,7 +1822,7 @@ describe("thread command dispatch", () => {
       harness.dispatchOptions(),
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ trace: { spans: [] } });
     expect(harness.runtimeState.ranTurnText).toBe("resume work");
     expect(harness.runtimeState.resumedThreadId).toBeUndefined();
     expect(harness.manager.listActiveThreads()).toEqual([
@@ -1877,7 +1877,7 @@ describe("thread command dispatch", () => {
       harness.dispatchOptions(),
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ trace: { spans: [] } });
     expect(harness.runtimeState.steeredTurnId).toBe("turn-1");
     expect(harness.manager.listActiveThreads()).toEqual([
       {
@@ -1944,7 +1944,7 @@ describe("thread command dispatch", () => {
       harness.dispatchOptions(),
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ trace: { spans: [] } });
     expect(steeredTurnIds).toEqual(["turn-old", "turn-new"]);
     expect(harness.runtimeState.ranTurnClientRequestId).toBeUndefined();
   });
@@ -2020,7 +2020,7 @@ describe("thread command dispatch", () => {
       harness.dispatchOptions(),
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ trace: { spans: [] } });
     expect(steeredTurnIds).toEqual(["turn-old", "turn-new"]);
     expect(waitCalls).toBe(1);
     expect(harness.runtimeState.ranTurnClientRequestId).toBeUndefined();
@@ -2079,7 +2079,7 @@ describe("thread command dispatch", () => {
       harness.dispatchOptions(),
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ trace: { spans: [] } });
     expect(harness.runtimeState.ranTurnText).toBe("strict steer");
     expect(harness.runtimeState.ranTurnClientRequestId).toBe(requestId);
   });
@@ -2133,7 +2133,7 @@ describe("thread command dispatch", () => {
       harness.dispatchOptions(),
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ trace: { spans: [] } });
     expect(harness.runtimeState.ranTurnText).toBe("send without active turn");
     expect(harness.runtimeState.ranTurnClientRequestId).toBe(requestId);
     expect(harness.runtimeState.steeredTurnId).toBeUndefined();
@@ -2183,7 +2183,7 @@ describe("thread command dispatch", () => {
       harness.dispatchOptions(),
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ trace: { spans: [] } });
     expect(harness.provisions).toEqual([
       expect.objectContaining({
         path: "/tmp/env-lazy",
@@ -2281,7 +2281,7 @@ describe("thread command dispatch", () => {
       makeDispatchOptions({ runtimeManager: manager }),
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ trace: { spans: [] } });
     expect(createRuntimeCalls).toBe(2);
     expect(replacementFake.state.resumedThreadId).toBe("thread-1");
     expect(replacementFake.state.ranTurnText).toBe("after exit");

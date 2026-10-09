@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { ThreadRowNavigationProvider } from "../rows/threadRowNavigation.js";
 import {
   cleanup,
   fireEvent,
@@ -101,7 +102,9 @@ function Harness({ children, store }: HarnessProps) {
     <TooltipProvider>
       <SidebarDraftPresenceSync />
       <Provider store={store}>
-        <SidebarRenameProvider>{children}</SidebarRenameProvider>
+        <ThreadRowNavigationProvider>
+          <SidebarRenameProvider>{children}</SidebarRenameProvider>
+        </ThreadRowNavigationProvider>
       </Provider>
     </TooltipProvider>
   );
@@ -558,7 +561,7 @@ describe("ProjectRow interactions", () => {
     expect(projectGroup?.hasAttribute("data-sidebar-section-id")).toBe(false);
   });
 
-  it("aligns a nested environment group with its parent guide", () => {
+  it("indents a nested environment group one level below its parent", () => {
     const environment = makeSidebarEnvironment({
       id: "env_nested",
       name: "Nested workspace",
@@ -598,12 +601,12 @@ describe("ProjectRow interactions", () => {
     expect(
       container.querySelector('[data-sidebar-thread-id="thr_parent"]'),
     ).not.toBeNull();
-    expect(header?.style.paddingLeft).toBe("8px");
-    expect(guide?.style.left).toBe("16px");
+    expect(header?.style.paddingLeft).toBe("32px");
+    expect(guide?.style.left).toBe("40px");
     expect(
       child?.closest<HTMLElement>(".bb-sidebar-hover-actions-row")?.style
         .paddingLeft,
-    ).toBe("32px");
+    ).toBe("56px");
   });
 
   it("shows generic runtime activity before a named workflow rollup", () => {
@@ -1095,7 +1098,7 @@ describe("ProjectRow interactions", () => {
     "keeps environment actions touch-accessible when collapsed=%s",
     async (isCollapsed) => {
       const update = vi.fn(sdkResult({ ok: true }));
-      const { sidebarActionCalls, sdkCalls } = renderProjectRow(
+      const { navigateCalls, sdkCalls } = renderProjectRow(
         vi.fn(),
         { status: "ready", threads: ENVIRONMENT_THREADS },
         false,
@@ -1117,13 +1120,13 @@ describe("ProjectRow interactions", () => {
         ),
       ).toBe(true);
       fireEvent.click(createButton);
-      expect(sidebarActionCalls).toEqual([
+      expect(navigateCalls).toEqual([
         {
-          method: "openNewThread",
+          method: "toCompose",
           options: {
             projectId: "proj_test",
             environmentId: "env_test",
-            experimental_placement: { sectionId: null, pinned: false },
+            placement: { sectionId: null, pinned: false },
             focusPrompt: true,
           },
         },
@@ -1195,7 +1198,7 @@ describe("ProjectRow interactions", () => {
       sdkResult({ ok: true, archivedThreadIds: [] }),
     );
     const update = vi.fn(sdkResult({ ok: true }));
-    const { sdkCalls, sidebarActionCalls } = renderProjectRow(
+    const { sdkCalls, experimental_environmentArchiveCalls } = renderProjectRow(
       vi.fn(),
       {
         status: "ready",
@@ -1233,10 +1236,7 @@ describe("ProjectRow interactions", () => {
       { button: 0 },
     );
     fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
-    expect(sidebarActionCalls).toContainEqual({
-      method: "experimental_archiveEnvironmentThreads",
-      environmentId: "env_plain",
-    });
+    expect(experimental_environmentArchiveCalls).toEqual(["env_plain"]);
 
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Environment actions" }),
@@ -1283,7 +1283,7 @@ describe("environment creation placement", () => {
       }).rootItems[0];
       if (group.kind !== "environment")
         throw new Error("Expected environment group");
-      const { sidebarActionCalls } = renderTree(
+      const { navigateCalls } = renderTree(
         <ThreadCreationPlacementScope
           group={groupId === "pinned-mixed" ? "pinned" : groupId}
         >
@@ -1300,14 +1300,14 @@ describe("environment creation placement", () => {
       fireEvent.click(
         screen.getByRole("button", { name: "New thread in environment" }),
       );
-      expect(sidebarActionCalls).toEqual([
+      expect(navigateCalls).toEqual([
         {
-          method: "openNewThread",
+          method: "toCompose",
           options: {
             projectId: "proj_test",
             environmentId: "env_test",
             focusPrompt: true,
-            experimental_placement: { sectionId, pinned },
+            placement: { sectionId, pinned },
           },
         },
       ]);

@@ -13,6 +13,7 @@ import {
 const HOSTS_QUERY_KEY = "hosts";
 const HOST_QUERY_KEY = "host";
 const HOST_DIRECTORY_QUERY_KEY = "hostDirectory";
+const HOST_DISCOVERED_REPOS_QUERY_KEY = "hostDiscoveredRepos";
 const HOST_CLONE_DEFAULT_PATH_QUERY_KEY = "hostCloneDefaultPath";
 const PROJECTS_QUERY_KEY = "projects";
 const PROJECT_PATHS_QUERY_KEY = "projectPaths";
@@ -357,6 +358,7 @@ type ThreadTimelineQueryKey = readonly [
 type ThreadConversationOutlineQueryKey = readonly [
   typeof THREAD_CONVERSATION_OUTLINE_QUERY_KEY,
   string,
+  ThreadConversationOutlineRole,
 ];
 type ThreadConversationOutlineQueryKeyPrefix = readonly [
   typeof THREAD_CONVERSATION_OUTLINE_QUERY_KEY,
@@ -366,6 +368,7 @@ type AllThreadConversationOutlineQueryKeyPrefix = readonly [
   typeof THREAD_CONVERSATION_OUTLINE_QUERY_KEY,
 ];
 export interface ThreadTimelineTurnSummaryDetailsQueryIdentity {
+  itemId: string | null;
   sourceSeqEnd: number;
   sourceSeqStart: number;
   threadId: string;
@@ -377,6 +380,7 @@ type ThreadTimelineTurnSummaryDetailsQueryKey = readonly [
   string,
   number,
   number,
+  string | null,
 ];
 type ThreadTimelineQueryKeyPrefix = readonly [
   typeof THREAD_TIMELINE_QUERY_KEY,
@@ -527,6 +531,30 @@ export function hostQueryKey(hostId: HostQueryId): HostQueryKey {
 
 export function allHostQueryKeyPrefix(): AllHostQueryKeyPrefix {
   return [HOST_QUERY_KEY];
+}
+
+const TERMINAL_OUTPUT_TAIL_QUERY_KEY = "terminalOutputTail";
+
+type TerminalOutputTailQueryKey = readonly [
+  typeof TERMINAL_OUTPUT_TAIL_QUERY_KEY,
+  string,
+];
+
+export function terminalOutputTailQueryKey(
+  terminalId: string,
+): TerminalOutputTailQueryKey {
+  return [TERMINAL_OUTPUT_TAIL_QUERY_KEY, terminalId];
+}
+
+type HostDiscoveredReposQueryKey = readonly [
+  typeof HOST_DISCOVERED_REPOS_QUERY_KEY,
+  HostQueryId,
+];
+
+export function hostDiscoveredReposQueryKey(
+  hostId: HostQueryId,
+): HostDiscoveredReposQueryKey {
+  return [HOST_DISCOVERED_REPOS_QUERY_KEY, hostId];
 }
 
 export function hostDirectoryQueryKey(
@@ -939,10 +967,13 @@ export function threadTimelineQueryKey(
   return [THREAD_TIMELINE_QUERY_KEY, threadId];
 }
 
+export type ThreadConversationOutlineRole = "user" | "assistant";
+
 export function threadConversationOutlineQueryKey(
   threadId: string,
+  role: ThreadConversationOutlineRole,
 ): ThreadConversationOutlineQueryKey {
-  return [THREAD_CONVERSATION_OUTLINE_QUERY_KEY, threadId];
+  return [THREAD_CONVERSATION_OUTLINE_QUERY_KEY, threadId, role];
 }
 
 export function threadConversationOutlineQueryKeyPrefix(
@@ -956,6 +987,7 @@ export function allThreadConversationOutlineQueryKeyPrefix(): AllThreadConversat
 }
 
 export function threadTimelineTurnSummaryDetailsQueryKey({
+  itemId,
   sourceSeqEnd,
   sourceSeqStart,
   threadId,
@@ -967,6 +999,7 @@ export function threadTimelineTurnSummaryDetailsQueryKey({
     turnId,
     sourceSeqStart,
     sourceSeqEnd,
+    itemId,
   ];
 }
 
