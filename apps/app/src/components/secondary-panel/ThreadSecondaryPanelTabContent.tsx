@@ -10,7 +10,10 @@ import {
   useEnvironment,
   useEnvironmentFilePreview,
 } from "@/hooks/queries/environment-queries";
-import { useProjectFilePreview } from "@/hooks/queries/project-queries";
+import {
+  useProjectAttachmentPreview,
+  useProjectFilePreview,
+} from "@/hooks/queries/project-queries";
 import {
   useThreadHostFilePreview,
   useThreadStorageFilePreview,
@@ -104,6 +107,14 @@ interface HostScopedFilePreviewTabContentProps {
   isPanelOpen: boolean;
   lineRange: FilePreviewLineRange | null;
   onOpenInEditor?: (path: string) => void;
+}
+
+interface AttachmentFilePreviewTabContentProps {
+  isPanelOpen: boolean;
+  name: string;
+  onSelectionAddToChat?: (text: string) => void;
+  path: string;
+  projectId: string;
 }
 
 interface ThreadStorageFilePreviewTabContentProps {
@@ -545,6 +556,32 @@ export function ThreadStorageFilePreviewTabContent({
       markdownLinkRouting={resolvedMarkdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
+      statusLabel={null}
+    />
+  );
+}
+
+export function AttachmentFilePreviewTabContent({
+  isPanelOpen,
+  name,
+  onSelectionAddToChat,
+  path,
+  projectId,
+}: AttachmentFilePreviewTabContentProps) {
+  const attachmentPreviewQuery = useProjectAttachmentPreview(
+    projectId,
+    path,
+    name,
+    { enabled: isPanelOpen },
+  );
+
+  return (
+    <SecondaryPanelFilePreview
+      {...filePreviewQueryProps(attachmentPreviewQuery)}
+      activePath={name}
+      copyPath={null}
+      lineRange={null}
+      onSelectionAddToChat={onSelectionAddToChat}
       statusLabel={null}
     />
   );

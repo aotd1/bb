@@ -47,6 +47,7 @@ import {
   type ClientMessage,
 } from "@bb/server-contract";
 import { z } from "zod";
+import { registerDesktopClipboardIpc } from "./desktop-clipboard.js";
 import { registerDesktopWindowFocusIpc } from "./desktop-window-focus.js";
 import {
   assertPathExists,
@@ -204,6 +205,7 @@ import {
 import {
   BB_DESKTOP_APP_COMMAND_CHANNEL,
   BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL,
+  BB_DESKTOP_RELOAD_WINDOW_CHANNEL,
   BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
@@ -580,14 +582,21 @@ function registerApplicationRendererReloadShortcut(
     event.preventDefault();
     const browserWindow = resolveApplicationWindow(webContents);
     if (browserWindow !== null) {
-      desktopBrowserViewManager?.prepareWindowReload(browserWindow);
-    }
-    if (shortcut === "force-reload") {
-      webContents.reloadIgnoringCache();
-    } else {
-      webContents.reload();
+      reloadApplicationWindow(browserWindow, shortcut === "force-reload");
     }
   });
+}
+
+function reloadApplicationWindow(
+  browserWindow: BrowserWindow,
+  ignoreCache: boolean,
+): void {
+  desktopBrowserViewManager?.prepareWindowReload(browserWindow);
+  if (ignoreCache) {
+    browserWindow.webContents.reloadIgnoringCache();
+  } else {
+    browserWindow.webContents.reload();
+  }
 }
 
 function sendDesktopInfoChanged(): void {
@@ -896,12 +905,7 @@ function refreshApplicationMenu(): void {
       if (!(browserWindow instanceof BrowserWindow)) {
         return;
       }
-      desktopBrowserViewManager?.prepareWindowReload(browserWindow);
-      if (ignoreCache) {
-        browserWindow.webContents.reloadIgnoringCache();
-      } else {
-        browserWindow.webContents.reload();
-      }
+      reloadApplicationWindow(browserWindow, ignoreCache);
     },
     closeWindowOrSideTab(browserWindow) {
       if (browserWindow === undefined) {
@@ -2246,6 +2250,7 @@ async function finishQuit(): Promise<void> {
 
 function registerDesktopUpdateIpc(): void {
   registerDesktopWindowFocusIpc(applicationWindowWebContentsIds);
+  registerDesktopClipboardIpc(applicationWindowWebContentsIds);
   ipcMain.on(BB_DESKTOP_ZOOM_COMMAND_CHANNEL, (event, payload: unknown) => {
     const parsed = bbDesktopZoomCommandSchema.safeParse(payload);
     if (parsed.success) {
@@ -2975,6 +2980,18 @@ async function runDesktopApp(): Promise<void> {
       return;
     }
     desktopFindViewManager?.open(browserWindow, parsed.data);
+  });
+  ipcMain.on(BB_DESKTOP_RELOAD_WINDOW_CHANNEL, (event) => {
+    if (
+      !applicationWindowWebContentsIds.has(event.sender.id) ||
+      event.senderFrame !== event.sender.mainFrame
+    ) {
+      return;
+    }
+    const browserWindow = resolveApplicationWindow(event.sender);
+    if (browserWindow !== null) {
+      reloadApplicationWindow(browserWindow, false);
+    }
   });
   void removeLegacyAutomationPartitions(userDataPath).catch(() => {});
   desktopBrowserViewManager = createDesktopBrowserViewManager({

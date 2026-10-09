@@ -651,7 +651,8 @@ function PanelTab({
       enlargeCloseTargetOnCoarsePointer={
         tab.tab.kind === "workspace-file-preview" ||
         tab.tab.kind === "host-file-preview" ||
-        tab.tab.kind === "thread-storage-file-preview"
+        tab.tab.kind === "thread-storage-file-preview" ||
+        tab.tab.kind === "attachment-file-preview"
       }
       closeAction={
         tab.isPinned

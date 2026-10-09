@@ -1,3 +1,4 @@
+import { markThreadPruningWork } from "./thread-pruning-work.js";
 import { isBeforeLatestThreadEvent } from "./event-pruning-guards.js";
 import { acquireProjectAttachmentOwnership } from "./project-attachments.js";
 import {
@@ -335,6 +336,7 @@ export function deleteThreadEventSuffixInTransaction(
     .run();
   if (result.changes > 0) {
     bumpThreadEventRewriteGeneration(args.threadId);
+    markThreadPruningWork(db, [args.threadId]);
   }
   return { deletedEventCount: result.changes };
 }
@@ -483,6 +485,7 @@ export function insertEvents(
           }
         }
       }
+      markThreadPruningWork(tx, eventTypesByThreadId.keys());
       return { insertedCount, insertedInputIndexes };
     },
     { behavior: "immediate" },
@@ -852,6 +855,10 @@ export function appendDaemonEventsInTransaction(
     nextSequencesByThreadId.set(input.threadId, sequence + 1);
   }
 
+  markThreadPruningWork(
+    db,
+    acceptedEvents.map((event) => event.threadId),
+  );
   return {
     acceptedEvents,
     insertedInputIndexes,
@@ -925,6 +932,7 @@ export function copyStoredThreadEventsInTransaction(
     }
     sequence += 1;
   }
+  markThreadPruningWork(db, [args.targetThreadId]);
   return args.rows.length;
 }
 
@@ -1006,6 +1014,7 @@ export function appendStoredThreadEventsInTransaction(
     nextSequencesByThreadId.set(args.threadId, sequence + 1);
   }
 
+  markThreadPruningWork(db, threadIds);
   return sequences;
 }
 
@@ -1797,6 +1806,35 @@ export function listItemEventSpansByItems(
     )
     .groupBy(events.scopeKind, events.turnId, events.itemId)
     .all();
+}
+
+export interface GetStoredItemLifecycleSequenceRangeArgs {
+  itemId: string;
+  threadId: string;
+  turnId: string;
+}
+
+export function getStoredItemLifecycleSequenceRange(
+  db: DbQueryConnection,
+  args: GetStoredItemLifecycleSequenceRangeArgs,
+): { first: number; last: number } | null {
+  const [range] = db.all<{ first: number | null; last: number | null }>(sql`
+    SELECT MIN(lifecycle.sequence) AS first, MAX(lifecycle.sequence) AS last
+    FROM ${events} AS lifecycle
+      INDEXED BY events_item_lifecycle_thread_item_sequence_idx
+    WHERE lifecycle.thread_id = ${args.threadId}
+      AND lifecycle.item_id = ${args.itemId}
+      AND lifecycle.type IN (
+        'item/started',
+        'item/completed',
+        'item/backgroundTask/completed'
+      )
+      AND lifecycle.turn_id = ${args.turnId}
+  `);
+  if (range === undefined || range.first === null || range.last === null) {
+    return null;
+  }
+  return { first: range.first, last: range.last };
 }
 
 export interface ListStoredItemLifecycleRowsByItemsArgs {

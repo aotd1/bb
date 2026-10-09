@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSetAtom } from "jotai";
 import { appToast } from "@/components/ui/app-toast";
 import {
@@ -53,6 +53,9 @@ import { getThreadReadToggleAction } from "@bb/client-core";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
+import { resolveThread } from "@/lib/plugin-sidebar-hooks";
+import { CORE_THREAD_ACTIONS } from "@/lib/thread-actions/core-thread-actions";
+import { ThreadActionCollectors } from "@/lib/thread-actions/thread-action-registry";
 
 export interface ThreadActionsContextValue {
   archiveEnvironmentThreads: (environmentId: string) => Promise<void>;
@@ -322,13 +325,21 @@ export function ThreadActionsProvider({
     [unarchiveMutate],
   );
 
+  const { mutateAsync: archiveEnvironmentMutateAsync } = useMutation({
+    meta: { lifecycleOperation: "archive_thread", showErrorToast: false },
+    mutationFn: (environmentId: string) =>
+      getPluginBoundSdk(
+        sdk,
+        "thread-list",
+        queryClient,
+      ).environments.archiveThreads({ environmentId }),
+  });
+
   const archiveEnvironmentThreads = useCallback(
     async (environmentId: string) => {
       const browserSdk = getPluginBoundSdk(sdk, "thread-list", queryClient);
       try {
-        const response = await browserSdk.environments.archiveThreads({
-          environmentId,
-        });
+        const response = await archiveEnvironmentMutateAsync(environmentId);
         if (response.archivedThreadIds.length === 0) return;
         const displacedThreadId = viewedThreadIdRef.current;
         const displaced =
@@ -349,8 +360,8 @@ export function ThreadActionsProvider({
         if (destination !== null) viewedRouteRef.current = destination;
         appToast.success(
           response.archivedThreadIds.length === 1
-            ? "Thread Archived"
-            : "Threads Archived",
+            ? "Thread archived"
+            : "Threads archived",
           {
             description: `Archived ${response.archivedThreadIds.length} ${response.archivedThreadIds.length === 1 ? "thread" : "threads"}`,
             cancel: {
@@ -388,7 +399,13 @@ export function ThreadActionsProvider({
         throw error;
       }
     },
-    [queryClient, closePanesForThreads, syncNavigationAfterClose, navigate],
+    [
+      archiveEnvironmentMutateAsync,
+      queryClient,
+      closePanesForThreads,
+      syncNavigationAfterClose,
+      navigate,
+    ],
   );
 
   const performArchive = useCallback(
@@ -425,7 +442,7 @@ export function ThreadActionsProvider({
             viewedRouteRef.current = archiveDestination;
           }
           const toastId = `thread-archived-${thread.id}`;
-          appToast.success("Thread Archived", {
+          appToast.success("Thread archived", {
             description: (
               <ArchivedThreadToastDescription
                 archivedThreadCount={response.archivedThreadIds.length}
@@ -579,8 +596,23 @@ export function ThreadActionsProvider({
     ],
   );
 
+  const requestRenameById = (threadId: string) => {
+    resolveThread(queryClient, threadId).then(
+      (thread) => window.setTimeout(() => requestRename(thread), 0),
+      (error: unknown) =>
+        showMutationErrorToast({
+          error,
+          fallbackMessage: "Failed to rename thread.",
+        }),
+    );
+  };
+
   return (
     <ThreadActionsContext.Provider value={value}>
+      <ThreadActionCollectors
+        coreRegistrations={CORE_THREAD_ACTIONS}
+        requestRename={requestRenameById}
+      />
       {children}
       <ThreadRenameDialog
         target={renameDialog.target}

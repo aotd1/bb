@@ -246,6 +246,16 @@ export const LazyThreadStorageFilePreviewTabContent = defineSplit({
   tier: "intent",
 });
 
+export const LazyAttachmentFilePreviewTabContent = defineSplit({
+  id: "attachment-file-preview-tab",
+  load: () =>
+    import("./ThreadSecondaryPanelTabContent").then(
+      (module) => module.AttachmentFilePreviewTabContent,
+    ),
+  loading: FilePreviewLoading,
+  tier: "intent",
+});
+
 const panelContentSplits = [
   LazyBrowserTabDeck,
   LazyThreadTerminalPanel,
@@ -256,4 +266,5 @@ const panelContentSplits = [
   LazyHostScopedFilePreviewTabContent,
   LazyProjectFilePreviewTabContent,
   LazyThreadStorageFilePreviewTabContent,
+  LazyAttachmentFilePreviewTabContent,
 ];

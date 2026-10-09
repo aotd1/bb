@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@bb/shared-ui/hover-reveal";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   observedBorderBoxBlockSize,
@@ -29,10 +30,10 @@ interface ChevronProps {
   className?: string;
 }
 
-const COLLAPSIBLE_HEADER_COLLAPSED_TONE_CLASS = `text-muted-foreground ${CONTROL_HOVER_TRANSITION} hover:text-foreground focus-visible:text-foreground`;
+export const COLLAPSIBLE_HEADER_COLLAPSED_TONE_CLASS = `text-muted-foreground ${CONTROL_HOVER_TRANSITION} hover:text-foreground focus-visible:text-foreground`;
 const COLLAPSIBLE_HEADER_EXPANDED_TONE_CLASS = "text-foreground";
 export const COLLAPSIBLE_HEADER_STATIC_TONE_CLASS = "text-muted-foreground";
-const COLLAPSIBLE_HEADER_BUTTON_BASE_CLASS =
+export const COLLAPSIBLE_HEADER_BUTTON_BASE_CLASS =
   "inline-flex max-w-full items-center gap-1 overflow-hidden py-0.5 text-left text-sm";
 const COLLAPSIBLE_HEADER_TEXT_CLASS = "min-w-0 truncate";
 
@@ -109,7 +110,10 @@ export function CollapsibleHeader({
             ? "rotate-90"
             : forceChevronVisible
               ? "opacity-100"
-              : "opacity-0 group-hover/toggle:opacity-100 group-focus-visible/toggle:opacity-100 max-md:pointer-coarse:opacity-100",
+              : cn(
+                  "opacity-0 group-hover/toggle:opacity-100 group-focus-visible/toggle:opacity-100",
+                  HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
+                ),
         )}
       />
     </button>

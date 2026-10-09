@@ -18,6 +18,7 @@ import {
   bbDesktopBrowserControlStateSchema,
   bbDesktopBrowserRevealRequestSchema,
   type BbDesktopBrowserControlState,
+  type BbDesktopClipboardContent,
   type BbDesktopBrowserRevealRequest,
   bbDesktopInfoSchema,
   bbDesktopWindowStateSchema,
@@ -87,6 +88,7 @@ import {
 import {
   BB_DESKTOP_APP_COMMAND_CHANNEL,
   BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL,
+  BB_DESKTOP_RELOAD_WINDOW_CHANNEL,
   BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
@@ -96,6 +98,7 @@ import {
   BB_DESKTOP_OPEN_DATA_DIRECTORY_CHANNEL,
   BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL,
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
+  BB_DESKTOP_WRITE_CLIPBOARD_CHANNEL,
 } from "./desktop-window-command-ipc.js";
 import {
   getDesktopVersion,
@@ -455,6 +458,9 @@ const bbDesktopApi: BbDesktopApi = {
   async openServerDaemonLogs(): Promise<void> {
     await ipcRenderer.invoke(BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL);
   },
+  reloadWindow(): void {
+    ipcRenderer.send(BB_DESKTOP_RELOAD_WINDOW_CHANNEL);
+  },
   setSplitNavigationEnabled(
     enabled: boolean,
     directionalCommands?: readonly AppCommandId[],
@@ -467,6 +473,9 @@ const bbDesktopApi: BbDesktopApi = {
   },
   setTheme(theme: BbDesktopTheme): void {
     ipcRenderer.send(BB_DESKTOP_SET_THEME_CHANNEL, theme);
+  },
+  async writeClipboard(content: BbDesktopClipboardContent): Promise<void> {
+    await ipcRenderer.invoke(BB_DESKTOP_WRITE_CLIPBOARD_CHANNEL, content);
   },
 };
 

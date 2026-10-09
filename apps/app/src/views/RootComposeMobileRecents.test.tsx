@@ -7,6 +7,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -23,6 +24,8 @@ import {
   RootComposeMobileRecents,
 } from "./RootComposeMobileRecents";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import { CORE_THREAD_ACTIONS } from "@/lib/thread-actions/core-thread-actions";
+import { ThreadActionCollectors } from "@/lib/thread-actions/thread-action-registry";
 
 const threadActions = vi.hoisted(() => ({
   requestArchive: vi.fn(),
@@ -36,6 +39,14 @@ const threadActions = vi.hoisted(() => ({
 vi.mock("@/components/thread/ThreadActionsProvider", () => ({
   useThreadActions: () => threadActions,
 }));
+
+const sdkThreads = vi.hoisted(() => ({
+  pin: vi.fn(async ({ threadId }: { threadId: string }) => ({
+    id: threadId,
+  })),
+}));
+
+vi.mock("@/lib/sdk", () => ({ sdk: { threads: sdkThreads } }));
 
 const personalProvider: SystemEnvironmentProvider = {
   machineProviderId: null,
@@ -67,7 +78,13 @@ function TestProviders({
   return (
     <Provider store={store}>
       <QueryClientProvider client={new QueryClient()}>
-        <MemoryRouter>{children}</MemoryRouter>
+        <MemoryRouter>
+          <ThreadActionCollectors
+            coreRegistrations={CORE_THREAD_ACTIONS}
+            requestRename={() => {}}
+          />
+          {children}
+        </MemoryRouter>
       </QueryClientProvider>
     </Provider>
   );
@@ -679,7 +696,7 @@ describe("mobile recent thread rows", () => {
 });
 
 describe("RootComposeMobileRecents", () => {
-  it("opens thread actions on a long press without following the thread link", () => {
+  it("opens thread actions on a long press without following the thread link", async () => {
     vi.useFakeTimers();
     const thread = makeThread();
     render(
@@ -712,7 +729,10 @@ describe("RootComposeMobileRecents", () => {
     const pin = screen.getByRole("menuitem", { name: "Pin" });
     fireEvent.pointerDown(pin, { pointerType: "touch" });
     fireEvent.click(pin);
-    expect(threadActions.togglePin).toHaveBeenCalledWith(thread);
+    vi.useRealTimers();
+    await waitFor(() =>
+      expect(sdkThreads.pin).toHaveBeenCalledWith({ threadId: thread.id }),
+    );
   });
 
   it("shows concurrent Plan activity before the runtime spinner", () => {
