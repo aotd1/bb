@@ -93,6 +93,10 @@ import {
   requestComposerFocus,
   subscribeComposerFocusRequests,
 } from "@/lib/composer-focus-requests";
+import {
+  AttachmentOpenerContext,
+  type OpenAttachmentRequest,
+} from "@/components/secondary-panel/AttachmentOpenerContext";
 import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
@@ -1142,6 +1146,13 @@ function RootComposeSurface({
     },
     [openTab],
   );
+  const openAttachment = useCallback(
+    (attachment: OpenAttachmentRequest) => {
+      openTab({ kind: "attachment-file-preview", ...attachment });
+      openCompactDrawer();
+    },
+    [openCompactDrawer, openTab],
+  );
   const openBrowserTabAndReveal = useCallback(
     (url?: string) => {
       if (rootPanelThreadId === null) {
@@ -1566,6 +1577,14 @@ function RootComposeSurface({
               statusLabel: null,
               onSelect: () => handleActivateFileTab(tab.id),
             };
+          case "attachment-file-preview":
+            return {
+              ...shared,
+              label: tab.name,
+              leadingVisual: <RightPanelFileTabIcon path={tab.name} />,
+              statusLabel: null,
+              onSelect: () => handleActivateFileTab(tab.id),
+            };
           case "new-tab":
             return {
               ...shared,
@@ -1787,74 +1806,76 @@ function RootComposeSurface({
       {machineSetupDialog}
       {rootPanelToggle}
       <PluginComposerHostProvider value={pluginComposerHost}>
-        <UrlOpenRoutingProvider
-          openInAppBrowser={
-            desktopBrowserAvailable && rootPanelThreadId !== null
-              ? openBrowserTabAndReveal
-              : null
-          }
-        >
-          <AppNavigationHostProvider capabilities={appNavigationCapabilities}>
-            <RootComposeSecondaryContent
-              contentClassName={
-                showEmptyWelcome
-                  ? ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS
-                  : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
-              }
-              isCompactHomeLayout={isCompactHomeLayout}
-              compactScrollContent={
-                showEmptyWelcome ? null : (
-                  <RootComposeMobileRecents
-                    highlightedThreadId={lastCreatedThreadId}
-                    projectNamesById={mobileRecentProjectNamesById}
-                    providersById={mobileRecentProvidersById}
-                    showCreatingRow={isSubmitting}
-                    threads={mobileRecentThreads}
+        <AttachmentOpenerContext.Provider value={openAttachment}>
+          <UrlOpenRoutingProvider
+            openInAppBrowser={
+              desktopBrowserAvailable && rootPanelThreadId !== null
+                ? openBrowserTabAndReveal
+                : null
+            }
+          >
+            <AppNavigationHostProvider capabilities={appNavigationCapabilities}>
+              <RootComposeSecondaryContent
+                contentClassName={
+                  showEmptyWelcome
+                    ? ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS
+                    : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
+                }
+                isCompactHomeLayout={isCompactHomeLayout}
+                compactScrollContent={
+                  showEmptyWelcome ? null : (
+                    <RootComposeMobileRecents
+                      highlightedThreadId={lastCreatedThreadId}
+                      projectNamesById={mobileRecentProjectNamesById}
+                      providersById={mobileRecentProvidersById}
+                      showCreatingRow={isSubmitting}
+                      threads={mobileRecentThreads}
+                    />
+                  )
+                }
+                isSecondaryPanelOpen={isSecondaryPanelOpen}
+                onToggleSecondaryPanel={handleToggleSecondaryPanel}
+                secondaryPanel={{
+                  activeTab: activeFixedSecondaryTab,
+                  canUseGitUi: false,
+                  environmentId: rootPanelEnvironmentId ?? undefined,
+                  metadataContent: rootPanelMetadataContent,
+                  workspaceRootPath:
+                    rootPanelEnvironment?.path ??
+                    (rootPanelTerminalTarget?.kind === "host_path"
+                      ? (rootPanelTerminalTarget.cwd ?? undefined)
+                      : undefined),
+                  tabs: panelTabs,
+                  splitPanelStateId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+                  renderBrowserDeck,
+                  isOpen: isSecondaryPanelOpen,
+                  fixedTabs: [],
+                  showConversationCollapseControl: false,
+                  onClose: closeSecondaryPanel,
+                  onCollapse: closeSecondaryPanel,
+                  onTabReorder: reorderTab,
+                  onOpenNewTab: handleOpenNewTab,
+                  onOpenFilePreview: handleOpenFilePreview,
+                  onSelectionAddToChat: handleRootPanelSelectionAddToChat,
+                  onPanelFocus: touchFixedPanelTabsState,
+                }}
+              >
+                {showEmptyWelcome ? (
+                  <RootComposeEmptyWelcome
+                    onCompose={handleStartComposing}
+                    onAddProject={quickCreateProject.openCreateDialog}
+                    addProjectDisabled={
+                      !quickCreateProject.isAvailable ||
+                      quickCreateProject.isCreating
+                    }
                   />
-                )
-              }
-              isSecondaryPanelOpen={isSecondaryPanelOpen}
-              onToggleSecondaryPanel={handleToggleSecondaryPanel}
-              secondaryPanel={{
-                activeTab: activeFixedSecondaryTab,
-                canUseGitUi: false,
-                environmentId: rootPanelEnvironmentId ?? undefined,
-                metadataContent: rootPanelMetadataContent,
-                workspaceRootPath:
-                  rootPanelEnvironment?.path ??
-                  (rootPanelTerminalTarget?.kind === "host_path"
-                    ? (rootPanelTerminalTarget.cwd ?? undefined)
-                    : undefined),
-                tabs: panelTabs,
-                splitPanelStateId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
-                renderBrowserDeck,
-                isOpen: isSecondaryPanelOpen,
-                fixedTabs: [],
-                showConversationCollapseControl: false,
-                onClose: closeSecondaryPanel,
-                onCollapse: closeSecondaryPanel,
-                onTabReorder: reorderTab,
-                onOpenNewTab: handleOpenNewTab,
-                onOpenFilePreview: handleOpenFilePreview,
-                onSelectionAddToChat: handleRootPanelSelectionAddToChat,
-                onPanelFocus: touchFixedPanelTabsState,
-              }}
-            >
-              {showEmptyWelcome ? (
-                <RootComposeEmptyWelcome
-                  onCompose={handleStartComposing}
-                  onAddProject={quickCreateProject.openCreateDialog}
-                  addProjectDisabled={
-                    !quickCreateProject.isAvailable ||
-                    quickCreateProject.isCreating
-                  }
-                />
-              ) : (
-                promptBox
-              )}
-            </RootComposeSecondaryContent>
-          </AppNavigationHostProvider>
-        </UrlOpenRoutingProvider>
+                ) : (
+                  promptBox
+                )}
+              </RootComposeSecondaryContent>
+            </AppNavigationHostProvider>
+          </UrlOpenRoutingProvider>
+        </AttachmentOpenerContext.Provider>
       </PluginComposerHostProvider>
     </PluginDetailPanelContext.Provider>
   );

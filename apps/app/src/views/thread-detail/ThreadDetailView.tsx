@@ -190,6 +190,7 @@ import {
   LazyHostFilePreviewTabContent,
   LazyNewTabPage,
   LazyThreadStorageFilePreviewTabContent,
+  LazyAttachmentFilePreviewTabContent,
   LazyThreadTerminalPanel,
   LazyWorkspaceFilePreviewTabContent,
 } from "@/components/secondary-panel/lazySecondaryPanelComponents";
@@ -211,6 +212,10 @@ import {
   usePublishThreadPanelOpener,
 } from "@/components/plugin/plugin-thread-panel-navigation";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
+import {
+  AttachmentOpenerContext,
+  type OpenAttachmentRequest,
+} from "@/components/secondary-panel/AttachmentOpenerContext";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { getFileExtension } from "@/lib/plugin-slot-resolvers";
 import { Icon } from "@bb/shared-ui/icon";
@@ -2051,6 +2056,13 @@ function ThreadDetailViewInternal(
     },
     [thread, updateThread],
   );
+  const openAttachment = useCallback(
+    (attachment: OpenAttachmentRequest) => {
+      openTab({ kind: "attachment-file-preview", ...attachment });
+      openCompactDrawer();
+    },
+    [openCompactDrawer, openTab],
+  );
   const handleTimelineLocalFileLinkResolution = useCallback(
     (
       resolution: ThreadLocalFileLinkResolution,
@@ -2699,6 +2711,16 @@ function ThreadDetailViewInternal(
           />
         );
       }
+      case "attachment-file-preview":
+        return (
+          <LazyAttachmentFilePreviewTabContent
+            isPanelOpen={isSecondaryPanelOpen}
+            name={tab.name}
+            onSelectionAddToChat={handleSelectionAddToChat}
+            path={tab.path}
+            projectId={tab.projectId}
+          />
+        );
       case "thread-storage-file-preview": {
         const copyPath = resolveAbsoluteFilePath({
           path: tab.path,
@@ -2828,6 +2850,14 @@ function ThreadDetailViewInternal(
             label: filenameOfPanelTab(tab.path),
             isPinned: tab.isPinned,
             leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
+            statusLabel: null,
+            onSelect: () => handleActivateFileTab(tab.id),
+          };
+        case "attachment-file-preview":
+          return {
+            ...shared,
+            label: tab.name,
+            leadingVisual: <RightPanelFileTabIcon path={tab.name} />,
             statusLabel: null,
             onSelect: () => handleActivateFileTab(tab.id),
           };
@@ -3042,7 +3072,9 @@ function ThreadDetailViewInternal(
             <MarkdownLocalFileOpenTargetsContext.Provider
               value={fileOpenTargets}
             >
-              {threadDetailContent}
+              <AttachmentOpenerContext.Provider value={openAttachment}>
+                {threadDetailContent}
+              </AttachmentOpenerContext.Provider>
             </MarkdownLocalFileOpenTargetsContext.Provider>
           </PluginDetailPanelContext.Provider>
         </PluginThreadPanelNavigationProvider>

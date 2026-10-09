@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import type { PendingAttachmentUpload } from "./usePendingAttachmentUploads";
+import { useAttachmentOpener } from "@/components/secondary-panel/AttachmentOpenerContext";
+import { isProjectAttachmentPath } from "@/lib/file-content-urls";
 import {
   getWrappedImageIndex,
   ImageLightbox,
@@ -68,6 +70,31 @@ function ImageUploadPreview({ file }: { file: File }) {
         Uploading
       </span>
     </div>
+  );
+}
+
+function FileAttachmentName({
+  name,
+  path,
+  projectId,
+}: {
+  name: string;
+  path: string;
+  projectId: string | undefined;
+}) {
+  const openAttachment = useAttachmentOpener();
+  if (!openAttachment || !projectId || !isProjectAttachmentPath({ path })) {
+    return <span className="truncate">{name}</span>;
+  }
+  return (
+    <button
+      type="button"
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={() => openAttachment({ name, path, projectId })}
+      className="truncate hover:underline focus-visible:outline-none focus-visible:underline"
+    >
+      {name}
+    </button>
   );
 }
 
@@ -194,7 +221,11 @@ export function AttachmentPreview({
                   key={attachment.path}
                   className={FILE_ATTACHMENT_PILL_CLASS}
                 >
-                  <span className="truncate">{attachment.name}</span>
+                  <FileAttachmentName
+                    name={attachment.name}
+                    path={attachment.path}
+                    projectId={attachment.sourceProjectId ?? attachmentProjectId}
+                  />
                   {onRemoveAttachment ? (
                     <span className="relative size-4 shrink-0">
                       <button

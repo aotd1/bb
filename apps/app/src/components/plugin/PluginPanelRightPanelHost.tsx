@@ -36,6 +36,7 @@ import {
   LazyThreadSecondaryPanel,
   preloadThreadSecondaryPanel,
   LazyThreadStorageFilePreviewTabContent,
+  LazyAttachmentFilePreviewTabContent,
   LazyThreadTerminalPanel,
   LazyWorkspaceFilePreviewTabContent,
 } from "@/components/secondary-panel/lazySecondaryPanelComponents";
@@ -997,6 +998,15 @@ export function PluginPanelRightPanelHost({
               lineRange={tab.lineRange}
             />
           );
+        case "attachment-file-preview":
+          return (
+            <LazyAttachmentFilePreviewTabContent
+              isPanelOpen={isOpen}
+              name={tab.name}
+              path={tab.path}
+              projectId={tab.projectId}
+            />
+          );
         case "thread-storage-file-preview":
           return tab.threadId === null ? null : (
             <LazyThreadStorageFilePreviewTabContent
@@ -1101,6 +1111,16 @@ export function PluginPanelRightPanelHost({
                   tab.kind === "workspace-file-preview"
                     ? tab.statusLabel
                     : null,
+                onClose: () => closeTab(tab.id),
+              },
+            ];
+          case "attachment-file-preview":
+            return [
+              {
+                ...shared,
+                label: tab.name,
+                leadingVisual: <Icon name="File" className="size-3.5" />,
+                statusLabel: null,
                 onClose: () => closeTab(tab.id),
               },
             ];
