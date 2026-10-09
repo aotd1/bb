@@ -27,7 +27,7 @@ function resolveAttachmentPreviewSrc(
 const FILE_ATTACHMENT_PILL_CLASS =
   "inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-surface-recessed px-2 py-0.5 text-xs text-muted-foreground";
 
-function isImageAttachment(attachment: PromptDraftAttachment): boolean {
+export function isImageAttachment(attachment: PromptDraftAttachment): boolean {
   return (
     attachment.type === "localImage" ||
     attachment.mimeType?.toLowerCase().startsWith("image/") === true

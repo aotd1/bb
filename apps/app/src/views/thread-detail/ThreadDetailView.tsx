@@ -1538,6 +1538,13 @@ function ThreadDetailViewInternal(
       ),
     [handleSecondaryPanelChange, threadFixedViewTabs],
   );
+  const openAttachment = useCallback(
+    (attachment: OpenAttachmentRequest) => {
+      openTab({ kind: "attachment-file-preview", ...attachment });
+      openCompactDrawer();
+    },
+    [openCompactDrawer, openTab],
+  );
   const resolveMentionLink = useCallback<PromptMentionLinkResolver>(
     (resource) => {
       if (resource.kind === "thread") {
@@ -1551,6 +1558,16 @@ function ThreadDetailViewInternal(
       }
       if (resource.kind === "project") {
         return () => navigate(getProjectComposeRoutePath(resource.projectId));
+      }
+      if (resource.kind === "attachment") {
+        const attachmentProjectId = projectId;
+        if (!attachmentProjectId) return null;
+        return () =>
+          openAttachment({
+            name: resource.label,
+            path: resource.path,
+            projectId: attachmentProjectId,
+          });
       }
       if (resource.kind !== "path" || resource.entryKind !== "file") {
         return null;
@@ -1572,6 +1589,7 @@ function ThreadDetailViewInternal(
         });
     },
     [
+      openAttachment,
       navigate,
       navigateInPane,
       openStorageFile,
@@ -2055,13 +2073,6 @@ function ThreadDetailViewInternal(
       });
     },
     [thread, updateThread],
-  );
-  const openAttachment = useCallback(
-    (attachment: OpenAttachmentRequest) => {
-      openTab({ kind: "attachment-file-preview", ...attachment });
-      openCompactDrawer();
-    },
-    [openCompactDrawer, openTab],
   );
   const handleTimelineLocalFileLinkResolution = useCallback(
     (

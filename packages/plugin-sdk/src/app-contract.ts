@@ -2567,6 +2567,11 @@ export type ComposerMention = {
       argumentHint: string | null;
     }
   | {
+      kind: "attachment";
+      /** The stored path of a file attached to the same draft. */
+      path: string;
+    }
+  | {
       kind: "plugin";
       /** The plugin that owns the pill. */
       pluginId: string;

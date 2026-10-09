@@ -124,7 +124,11 @@ import {
 } from "@bb/client-core";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS } from "./banner/PromptStackCard";
-import { AttachmentPreview } from "./AttachmentPreview";
+import { AttachmentPreview, isImageAttachment } from "./AttachmentPreview";
+import {
+  withAttachmentMentionSuggestions,
+  type AttachmentMentionSuggestion,
+} from "@/hooks/promptMentionCandidates";
 import { VoiceRecordingBar } from "./VoiceRecordingBar";
 import {
   ComposerPlusMenuSlot,
@@ -264,12 +268,35 @@ const COLLAPSING_GRID_CLASS =
 const VOICE_ACTION_TRANSITION_MS = 180;
 const PASTED_TEXT_ATTACHMENT_MIN_LENGTH = 5_000;
 
-function nextPastedTextName(takenNames: ReadonlySet<string>): string {
-  let name = "Pasted text.txt";
-  for (let index = 2; takenNames.has(name); index += 1) {
-    name = `Pasted text ${index}.txt`;
+function uniqueAttachmentName(
+  name: string,
+  takenNames: ReadonlySet<string>,
+): string {
+  const extensionStart = name.lastIndexOf(".");
+  const stem = extensionStart > 0 ? name.slice(0, extensionStart) : name;
+  const extension = extensionStart > 0 ? name.slice(extensionStart) : "";
+  let candidate = name;
+  for (let index = 2; takenNames.has(candidate); index += 1) {
+    candidate = `${stem} ${index}${extension}`;
   }
-  return name;
+  return candidate;
+}
+
+function withUniqueAttachmentNames(
+  files: readonly File[],
+  existingNames: ReadonlySet<string>,
+): File[] {
+  const takenNames = new Set(existingNames);
+  return files.map((file) => {
+    const name = uniqueAttachmentName(file.name, takenNames);
+    takenNames.add(name);
+    return name === file.name
+      ? file
+      : new File([file], name, {
+          type: file.type,
+          lastModified: file.lastModified,
+        });
+  });
 }
 type VoiceActionTransition = "entering" | "active" | "exiting";
 
@@ -1710,7 +1737,9 @@ export function PromptBoxInternal({
         if (recordHistory) recordHistory(id, currentEditor);
         else recordAttachmentHistory(currentEditor.view, id, true);
       }
-      void attach(files).then((added) => {
+      void attach(
+        withUniqueAttachmentNames(files, attachmentNamesRef.current),
+      ).then((added) => {
         entry.attachments = added;
         if (!entry.present) removeHistoryAttachments(entry, added);
       });
@@ -2168,11 +2197,9 @@ export function PromptBoxInternal({
             plainText.length >= PASTED_TEXT_ATTACHMENT_MIN_LENGTH
           ) {
             event.preventDefault();
-            const file = new File(
-              [plainText],
-              nextPastedTextName(attachmentNamesRef.current),
-              { type: "text/plain" },
-            );
+            const file = new File([plainText], "Pasted text.txt", {
+              type: "text/plain",
+            });
             attachFilesWithHistoryRef.current([file], (id, currentEditor) => {
               const previousDoc = currentEditor.state.doc;
               recordPastedTextHistory(
@@ -2563,14 +2590,51 @@ export function PromptBoxInternal({
     () => orderCommandSuggestions(commandSuggestions, activeCommandQuery),
     [activeCommandQuery, commandSuggestions],
   );
+  const activeMentionQuery =
+    activeTrigger?.kind === "mention" ? activeTrigger.query.trim() : "";
+  const isDefaultMentionTrigger =
+    activeTrigger?.kind === "mention" &&
+    activeTrigger.char === DEFAULT_PLUGIN_MENTION_TRIGGER;
+  const attachmentMentionSuggestions = useMemo(
+    () =>
+      attachments
+        .filter((attachment) => !isImageAttachment(attachment))
+        .map((attachment): AttachmentMentionSuggestion => ({
+          kind: "attachment",
+          path: attachment.path,
+          name: attachment.name,
+          replacement: `@${attachment.name}`,
+        })),
+    [attachments],
+  );
+  const composerMentionResults = useMemo(
+    () =>
+      isDefaultMentionTrigger
+        ? withAttachmentMentionSuggestions({
+            attachments: attachmentMentionSuggestions,
+            query: activeMentionQuery,
+            results: mentionResults,
+          })
+        : mentionResults,
+    [
+      activeMentionQuery,
+      attachmentMentionSuggestions,
+      isDefaultMentionTrigger,
+      mentionResults,
+    ],
+  );
   const activeSuggestions = useMemo<readonly TypeaheadSuggestion[]>(
     () =>
       activeTriggerKind === "command"
         ? orderedCommandSuggestions
         : activeTriggerKind === "mention"
-          ? mentionResults.suggestions
+          ? composerMentionResults.suggestions
           : [],
-    [activeTriggerKind, mentionResults.suggestions, orderedCommandSuggestions],
+    [
+      activeTriggerKind,
+      composerMentionResults.suggestions,
+      orderedCommandSuggestions,
+    ],
   );
   const selectedSuggestionIndex = useMemo(() => {
     if (selectedSuggestionKey === null) return -1;
@@ -2581,16 +2645,16 @@ export function PromptBoxInternal({
   }, [activeSuggestions, selectedSuggestionKey]);
   const selectedIndex = Math.max(0, selectedSuggestionIndex);
 
-  const activeMentionQuery =
-    activeTrigger?.kind === "mention" ? activeTrigger.query.trim() : "";
   const mentionMenuState: MentionMenuState =
-    activeMentionQuery.length === 0
-      ? { kind: "hint" }
-      : mentionLoading
-        ? { kind: "loading" }
-        : mentionError
-          ? { kind: "error" }
-          : { kind: "results", results: mentionResults };
+    composerMentionResults !== mentionResults
+      ? { kind: "results", results: composerMentionResults }
+      : activeMentionQuery.length === 0
+        ? { kind: "hint" }
+        : mentionLoading
+          ? { kind: "loading" }
+          : mentionError
+            ? { kind: "error" }
+            : { kind: "results", results: mentionResults };
 
   const commandMenuState: CommandMenuState = commandLoading
     ? { kind: "loading" }

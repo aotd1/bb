@@ -4348,6 +4348,46 @@ describe("PromptBoxInternal mention triggers", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it("offers the draft's file attachments on a bare @ and mentions the picked one", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("Read @", {
+      upload: async (files) => uploadedAs(files),
+      initialAttachments: [
+        {
+          type: "localFile",
+          path: "uploads/Pasted text.txt",
+          name: "Pasted text.txt",
+        },
+        {
+          type: "localImage",
+          path: "uploads/photo.png",
+          name: "photo.png",
+          mimeType: "image/png",
+        },
+      ],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    await screen.findByTitle("Attachment: Pasted text.txt");
+    expect(screen.queryByTitle("Attachment: photo.png")).toBeNull();
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
+
+    await waitFor(() =>
+      expect(latestValue(changes)).toBe("Read @Pasted text.txt "),
+    );
+    expect(latestChange(changes)?.mentions).toEqual([
+      {
+        start: 5,
+        end: 21,
+        resource: {
+          kind: "attachment",
+          path: "uploads/Pasted text.txt",
+          label: "Pasted text.txt",
+        },
+      },
+    ]);
+  });
+
   it("keeps a dismissed multiword occurrence closed as its query extends", async () => {
     const { changes, promptBoxRef } = renderPromptBox("@asdf qwe", {
       mentionSuggestions: [githubIssueSuggestion],
@@ -5113,6 +5153,38 @@ describe("PromptBoxInternal prompt actions", () => {
     await waitFor(() => expect(onAttachFiles).toHaveBeenCalledTimes(1));
     const [file] = onAttachFiles.mock.calls[0]![0] as File[];
     expect(file!.name).toBe("Pasted text 3.txt");
+  });
+
+  it("gives every attached file a name unique within the draft", async () => {
+    const onAttachFiles = vi.fn().mockResolvedValue([]);
+    const { promptBoxRef } = renderPromptBox("", {
+      props: {
+        attachments: {
+          onAttachFiles,
+          items: [
+            { type: "localFile", path: "notes-1.txt", name: "notes.txt" },
+          ],
+        },
+      },
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    pasteClipboard({
+      files: [
+        new File(["a"], "notes.txt", { type: "text/plain" }),
+        new File(["b"], "notes.txt", { type: "text/plain" }),
+        new File(["c"], "README", { type: "text/plain" }),
+      ],
+    });
+
+    await waitFor(() => expect(onAttachFiles).toHaveBeenCalledTimes(1));
+    const files = onAttachFiles.mock.calls[0]![0] as File[];
+    expect(files.map((file) => file.name)).toEqual([
+      "notes 2.txt",
+      "notes 3.txt",
+      "README",
+    ]);
+    expect(await files[1]!.text()).toBe("b");
   });
 
   it.each([

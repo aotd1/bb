@@ -343,6 +343,7 @@ function testComposerMentionText(mention: ComposerMention): string {
     case "command":
       return `${mention.trigger}${mention.name}`;
     case "plugin":
+    case "attachment":
       return `@${mention.label}`;
     case "path": {
       const path =

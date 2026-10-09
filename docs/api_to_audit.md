@@ -3033,8 +3033,9 @@ runtime-only exports.
    dependencies must name fields (`composer.draft`), not the handle. Confirm
    the lint and documentation guidance is enough.
 2. **Mention shape.** `ComposerMention` exposes core resource fields (path
-   source and entry kind, command source and origin). Confirm these are
-   stable enough to be public.
+   source and entry kind, command source and origin, and the stored path an
+   `attachment` mention shares with a file attached to the same draft).
+   Confirm these are stable enough to be public.
 3. **Canonical pill text.** `insert` writes the editor's canonical pill text
    (`@label` for plugin mentions), while `insertMention` keeps writing the
    bare label. Decide whether `insertMention` should converge.
