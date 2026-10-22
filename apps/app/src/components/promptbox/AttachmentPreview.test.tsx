@@ -42,16 +42,68 @@ describe("AttachmentPreview", () => {
       onExpandedImageIndexChange: vi.fn(),
     };
     const { getByRole, queryByRole, rerender } = render(
-      <AttachmentPreview {...props} pendingUploads={[{ id: "upload-1", file }]} />,
+      <AttachmentPreview
+        {...props}
+        pendingUploads={[{ id: "upload-1", file }]}
+      />,
     );
     const status = getByRole("status", { name: "Uploading pending.png" });
-    expect(status.querySelector("img")?.getAttribute("src")).toBe("blob:local-1");
+    expect(status.querySelector("img")?.getAttribute("src")).toBe(
+      "blob:local-1",
+    );
     expect(status.textContent).toContain("Uploading");
     expect(queryByRole("button", { name: "Remove pending.png" })).toBeNull();
 
     rerender(<AttachmentPreview {...props} />);
     expect(queryByRole("status")).toBeNull();
     expect(revoked).toEqual(["blob:local-1"]);
+  });
+
+  it.each([
+    "image/heic",
+    "image/heif",
+    "image/heic-sequence",
+    "image/heif-sequence",
+    "Image/HEIF; charset=binary",
+    "image/heic; charset=binary",
+  ])("shows a placeholder until a %s upload becomes PNG", (mimeType) => {
+    const file = new File(["image"], "pending.HEIC", { type: mimeType });
+    const props = {
+      attachments: [],
+      expandedImageIndex: null,
+      onExpandedImageIndexChange: vi.fn(),
+      attachmentProjectId: "proj_1",
+    };
+    const { getByRole, queryByRole, rerender } = render(
+      <AttachmentPreview
+        {...props}
+        pendingUploads={[{ id: "upload-1", file }]}
+      />,
+    );
+    const status = getByRole("status", { name: "Uploading pending.HEIC" });
+    expect(status.querySelector("img")).toBeNull();
+    expect(status.querySelector('[data-icon="FileAttachment"]')).not.toBeNull();
+    expect(status.textContent).toContain("Uploading");
+    expect(created).toBe(0);
+
+    rerender(
+      <AttachmentPreview
+        {...props}
+        attachments={[
+          {
+            type: "localImage",
+            path: "converted.png",
+            name: "pending.png",
+            mimeType: "image/png",
+          },
+        ]}
+      />,
+    );
+    expect(queryByRole("status")).toBeNull();
+    expect(getByRole("img", { name: "pending.png" }).getAttribute("src")).toBe(
+      "/api/v1/projects/proj_1/attachments/content?path=converted.png",
+    );
+    expect(revoked).toEqual([]);
   });
 
   it("shows an uploading file in the file pill row so finishing does not move it", () => {
@@ -72,7 +124,9 @@ describe("AttachmentPreview", () => {
       />,
     );
 
-    const uploading = getByRole("status", { name: "Uploading Pasted text.txt" });
+    const uploading = getByRole("status", {
+      name: "Uploading Pasted text.txt",
+    });
     const finishedPill = getByRole("button", { name: "Remove notes.txt" })
       .parentElement?.parentElement;
     expect(uploading.parentElement).toBe(finishedPill?.parentElement);
@@ -82,23 +136,50 @@ describe("AttachmentPreview", () => {
   it("keeps upload feedback in the collapsed composer and releases previews on unmount", () => {
     const props = {
       attachments: [],
-      pendingUploads: [{ id: "upload-1", file: new File(["image"], "pending.png", { type: "image/png" }) }],
+      pendingUploads: [
+        {
+          id: "upload-1",
+          file: new File(["image"], "pending.png", { type: "image/png" }),
+        },
+      ],
       expandedImageIndex: null,
       onExpandedImageIndexChange: vi.fn(),
     };
-    const { getByRole, rerender, unmount } = render(<AttachmentPreview {...props} compact />);
+    const { getByRole, rerender, unmount } = render(
+      <AttachmentPreview {...props} compact />,
+    );
     const uploading = getByRole("status", { name: "1 uploading" });
     expect(uploading.textContent).toBe("1");
     expect(uploading.querySelector('[data-icon="Paperclip"]')).not.toBeNull();
-    const attachments = [{ type: "localImage" as const, path: "done.png", name: "done.png", sizeBytes: 5 }];
-    rerender(<AttachmentPreview {...props} attachments={attachments} compact />);
+    const attachments = [
+      {
+        type: "localImage" as const,
+        path: "done.png",
+        name: "done.png",
+        sizeBytes: 5,
+      },
+    ];
+    rerender(
+      <AttachmentPreview {...props} attachments={attachments} compact />,
+    );
     const mixed = getByRole("status", { name: "1 attachment, 1 uploading" });
     expect(mixed.textContent).toBe("2");
-    rerender(<AttachmentPreview {...props} attachments={attachments} pendingUploads={[]} compact />);
+    rerender(
+      <AttachmentPreview
+        {...props}
+        attachments={attachments}
+        pendingUploads={[]}
+        compact
+      />,
+    );
     const settled = getByRole("img", { name: "1 attachment" });
     expect(settled.querySelector('[data-icon="Loading"]')).toBeNull();
     rerender(<AttachmentPreview {...props} />);
-    expect(getByRole("status", { name: "Uploading pending.png" }).querySelector("img")).not.toBeNull();
+    expect(
+      getByRole("status", { name: "Uploading pending.png" }).querySelector(
+        "img",
+      ),
+    ).not.toBeNull();
     unmount();
     expect(revoked).toEqual(["blob:local-1"]);
   });
