@@ -871,6 +871,14 @@ export interface PluginHttp {
 }
 
 export interface PluginRpc {
+  /** Run a producer once per distinct watched read until its last client leaves. Register after the method. Abort stops the producer on unwatch or plugin disposal. */
+  experimental_whileWatched(
+    method: string,
+    handler: (
+      read: { input: JsonValue } | { key: string },
+      signal: AbortSignal,
+    ) => void | Promise<void>,
+  ): void;
   /** Refresh reads whose contract tags overlap this nonempty list. */
   experimental_invalidate(tags: readonly string[]): void;
   /** Refresh every read of this plugin, including untagged reads. */

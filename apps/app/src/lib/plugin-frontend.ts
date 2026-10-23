@@ -56,7 +56,10 @@ import {
 import { setPluginAssetIcons } from "@bb/shared-ui/icon-registry";
 import { setPluginLogoUrls, type PluginLogoUrls } from "./plugin-logos";
 import { createGatedPierreDiffsReact } from "./plugin-pierre-diffs-react";
-import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
+import {
+  pluginSdkAppImplementation,
+  retiredPluginSdkAppMembers,
+} from "./plugin-sdk-app-impl";
 import {
   beginPluginSlotBatch,
   removePluginSlotRegistrations,
@@ -178,7 +181,7 @@ interface BbPluginRuntime {
   reactDomClient: unknown;
   jsxRuntime: unknown;
   jsxDevRuntime: unknown;
-  pluginSdkApp: PluginSdkApp;
+  pluginSdkApp: PluginSdkApp & typeof retiredPluginSdkAppMembers;
   radixAlertDialog: unknown;
   radixContextMenu: unknown;
   radixDialog: unknown;
@@ -212,7 +215,10 @@ export function installPluginRuntime(): void {
     reactDomClient,
     jsxRuntime,
     jsxDevRuntime,
-    pluginSdkApp: pluginSdkAppImplementation,
+    pluginSdkApp: {
+      ...pluginSdkAppImplementation,
+      ...retiredPluginSdkAppMembers,
+    },
     radixAlertDialog,
     radixContextMenu,
     radixDialog,

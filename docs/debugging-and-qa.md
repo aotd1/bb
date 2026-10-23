@@ -545,10 +545,11 @@ payloads. Use it to reproduce performance problems that only appear at scale.
 task is uncached, and each package's `bench` script turns its benchmark on:
 
 - `@bb/app`: the sidebar thread list mount and update benchmark
-  (`sidebar.bench.test.tsx`) and the composer large-paste benchmark
-  (`prompt-paste-performance.test.ts`). `BB_SIDEBAR_BENCH_THREADS` sets the
-  thread count (default 3000), `BB_SIDEBAR_BENCH_OUT` writes the results as
-  JSON, and `PROMPTBOX_PERF_FIXTURE_OUT` saves the paste fixture.
+  (`sidebar.bench.test.tsx`). `BB_SIDEBAR_BENCH_THREADS` sets the thread
+  count (default 3000) and `BB_SIDEBAR_BENCH_OUT` writes the results as JSON.
+- `bb-plugin-bb--composer`: the composer large-paste benchmark
+  (`prompt-paste-performance.test.ts`). `PROMPTBOX_PERF_FIXTURE_OUT` saves the
+  paste fixture.
 - `@bb/host-watcher`: the root watcher recovery benchmark
   (`root-recovery-benchmark.test.ts`). `BB_WATCHER_BENCHMARK_OUTPUT` writes its
   report.
@@ -990,3 +991,25 @@ For a stale drawer or sidebar, check whether an optimistic mutation canceled
 the last realtime refresh, then whether its recovery ran after the mutation
 callbacks. Cover this ordering with real Query and Mutation observers; an
 isolated rollback helper test does not exercise mutation settlement.
+
+## Environment Status Loading
+
+Merge-base status is cached per host daemon process at two levels, each a
+least-recently-used cache capped by estimated size. Full comparisons (16 MiB)
+are keyed by checkout path, shell path, resolved HEAD and base commits, base
+label, and file limit; working-tree status is always read fresh. Per-commit
+changed files (64 MiB, skipping any commit over 1 MiB) and patch IDs (8 MiB per
+diff mode) are keyed by commit SHA and shared by every checkout on the host, so
+a new commit or a fetched base commit only needs its own diff. Comparisons where
+a Git command failed or squash detection timed out are not cached. A daemon
+restart clears both levels.
+
+Ahead/behind counts exclude commits whose patch appears on the other side, as
+`git rev-list --cherry-pick` does: only commits touching the same set of paths
+as a commit on the other side are patch-hashed, without rename detection.
+Squash detection reuses the per-commit changed files for the newest 1,000 base
+commits and hashes its candidate patches with Git's rename detection, cached
+separately, within 8 MiB of patch output and a 1-second deadline per attempt.
+When it cannot finish, `mergeBase.squashMergeCheckComplete` is false and the
+counts may include already squash-merged commits; the next refresh retries with
+the cached work. Daemons older than this field report `true`.
