@@ -21,7 +21,6 @@ import type { PluginComposerHost } from "@/components/plugin/plugin-composer-hos
 export const promptAreaMocks = {
   cancelThreadPlanMutate: vi.fn(),
   clearThreadGoalMutate: vi.fn(),
-  createQueuedMessageMutateAsync: vi.fn(),
   createThreadMutateAsync: vi.fn(),
   defaultExecutionOptions: null as ResolvedThreadExecutionOptions | null,
   executionInputSources: {} as ExistingThreadExecutionInputSources,
@@ -493,14 +492,15 @@ vi.mock("@/components/promptbox/banner/ThreadGoalCard", () => ({
 }));
 
 vi.mock("@/components/promptbox/banner/ThreadPromptContextBanner", () => ({
-  ThreadPromptContextBanner: ({
-    childThreadsSection,
+  ThreadPromptContextBanner: () => null,
+  ThreadChildThreadsBanner: ({
+    childThreads,
   }: {
-    childThreadsSection: { items: readonly unknown[] } | null;
+    childThreads: { items: readonly unknown[] } | null;
   }) =>
-    childThreadsSection ? (
+    childThreads ? (
       <div data-testid="child-threads-banner">
-        {childThreadsSection.items.length} child threads
+        {childThreads.items.length} child threads
       </div>
     ) : null,
 }));
@@ -660,10 +660,6 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
   useCreateThread: () => ({
     isPending: false,
     mutateAsync: promptAreaMocks.createThreadMutateAsync,
-  }),
-  useCreateThreadQueuedMessage: () => ({
-    isPending: false,
-    mutateAsync: promptAreaMocks.createQueuedMessageMutateAsync,
   }),
   useDeleteThreadQueuedMessage: () => ({
     isPending: false,

@@ -19,6 +19,7 @@ import {
   useSyncExternalStore,
   type ComponentType,
   type ReactElement,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
@@ -104,6 +105,7 @@ import {
   type PluginSidebarThreadsState,
   type PluginSourceCodeRendererRegistration,
   type PluginThreadHeaderActionRegistration,
+  type ExperimentalThreadContextSegmentRegistration,
   type ExperimentalThreadInfoRowRegistration,
   type ExperimentalThreadInfoSectionRegistration,
   type ExperimentalInfoSectionProps,
@@ -156,6 +158,7 @@ import { normalizePluginThreadRowStatus } from "../internal/composer-customizati
 import { normalizeExperimentalFileOpenOptions } from "../internal/file-navigation-validation.js";
 import { experimental_THREAD_ACTION_GROUPS } from "../thread-action-groups.js";
 import {
+  experimental_THREAD_CONTEXT_SEGMENT_GROUPS,
   experimental_THREAD_INFO_ROW_GROUPS,
   experimental_THREAD_INFO_SECTION_GROUPS,
 } from "../thread-info-groups.js";
@@ -335,8 +338,10 @@ interface SlotEnv {
   sidebarNavigationCalls: SidebarNavigationCall[];
   environmentArchiveCalls: string[];
   threadActions: TestThreadActionsResolver;
+  threadBulkActions: TestThreadBulkActionsResolver;
   threadActionRegistrations: readonly PluginThreadActionRegistrationInfo[];
   sidebarDraftThreadIds: ReadonlySet<string>;
+  experiments: ReadonlySet<string>;
   sidebarRowStatuses: ReadonlyMap<string, PluginSidebarThreadRowStatus>;
   sidebarShortcuts: ReadonlyMap<string, PluginSidebarThreadShortcut>;
   sidebarSplitLayout: PluginSidebarSplitLayout | null;
@@ -374,6 +379,18 @@ interface TestFixedTabTargetStore {
 export type TestThreadActionsResolver = (
   thread: PluginThreadActionTarget,
   options: { requestRename(threadId: string): void },
+) => readonly PluginThreadActionEntry[];
+
+/**
+ * What the fake `experimental_ThreadActionsContextMenu` lists when its
+ * `experimental_bulkThreads` has two or more threads, in menu order; the host's
+ * own actions are not emulated. That menu is labelled `Actions for N threads`,
+ * lists these entries and its `inline` items as `menuitem` buttons, closes
+ * after one runs, and calls `onEscapeKeyDown` and closes on Escape. Omitted →
+ * an empty list.
+ */
+export type TestThreadBulkActionsResolver = (
+  threads: readonly PluginThreadActionTarget[],
 ) => readonly PluginThreadActionEntry[];
 
 /** @internal One recorded `experimental_useSidebarThreadActions()` call; kept for plugins built against older SDKs. */
@@ -539,6 +556,7 @@ interface TestRealtimeConnectionStore {
 const SlotEnvContext = createContext<SlotEnv | null>(null);
 
 const NO_THREAD_ACTIONS: TestThreadActionsResolver = () => [];
+const NO_THREAD_BULK_ACTIONS: TestThreadBulkActionsResolver = () => [];
 const NO_THREAD_ACTION_REGISTRATIONS: readonly PluginThreadActionRegistrationInfo[] =
   [];
 
@@ -575,6 +593,32 @@ function TestThreadActionsMenuItems({
 }) {
   const rename = requestRename ?? noRenameEditor;
   const entries = useTestThreadActions(hook, thread, { requestRename: rename });
+  return (
+    <TestThreadActionRows
+      label="Thread actions"
+      entries={entries}
+      inline={inline}
+      rename={rename}
+      onClose={onClose}
+    />
+  );
+}
+
+function TestThreadActionRows({
+  label,
+  entries,
+  inline,
+  rename,
+  onClose,
+  onKeyDown,
+}: {
+  label: string;
+  entries: readonly PluginThreadActionEntry[];
+  inline: NonNullable<PluginThreadActionsMenuProps["inline"]>;
+  rename: (threadId: string) => void;
+  onClose: () => void;
+  onKeyDown?: (event: ReactKeyboardEvent) => void;
+}) {
   const rows = [
     ...entries.map((entry) => ({
       key: entry.key,
@@ -588,7 +632,7 @@ function TestThreadActionsMenuItems({
     })),
   ];
   return (
-    <div role="menu" aria-label="Thread actions">
+    <div role="menu" aria-label={label} onKeyDown={onKeyDown}>
       {rows.map((row) => (
         <button
           key={row.key}
@@ -681,18 +725,38 @@ function TestThreadActionsMenu({
 function TestThreadActionsContextMenu({
   thread,
   children,
-  inline,
+  inline = [],
   requestRename,
   onOpenChange,
   onCloseAutoFocus,
+  onEscapeKeyDown,
   disabled,
   dragging,
+  experimental_bulkThreads,
 }: PluginThreadActionsContextMenuProps) {
   const menu = useTestMenuOpenState({ onOpenChange, onCloseAutoFocus });
+  const resolveSelection = useSlotEnv(
+    "experimental_ThreadActionsContextMenu",
+  ).threadBulkActions;
+  const selection =
+    experimental_bulkThreads !== undefined &&
+    experimental_bulkThreads.length > 1
+      ? experimental_bulkThreads
+      : null;
+  const onKeyDown = (event: ReactKeyboardEvent) => {
+    if (event.key !== "Escape") return;
+    onEscapeKeyDown?.(event.nativeEvent);
+    menu.close();
+  };
   return (
     <div
       data-testid="bb-thread-actions-context-menu"
       data-thread-id={thread.id}
+      data-selection-thread-ids={
+        selection === null
+          ? undefined
+          : selection.map((target) => target.id).join(" ")
+      }
       data-disabled={disabled === true ? "true" : "false"}
       data-dragging={dragging === true ? "true" : "false"}
       className="contents"
@@ -703,7 +767,17 @@ function TestThreadActionsContextMenu({
       }}
     >
       {children}
-      {menu.open ? (
+      {menu.open && selection !== null ? (
+        <TestThreadActionRows
+          label={`Actions for ${selection.length} threads`}
+          entries={resolveSelection(selection)}
+          inline={inline}
+          rename={requestRename ?? noRenameEditor}
+          onClose={menu.close}
+          onKeyDown={onKeyDown}
+        />
+      ) : null}
+      {menu.open && selection === null ? (
         <TestThreadActionsMenuItems
           hook="experimental_ThreadActionsContextMenu"
           thread={thread}
@@ -1514,6 +1588,9 @@ const testPluginSdkApp = {
   useSettings(): PluginSettingsState {
     return useSlotEnv("useSettings").settingsState;
   },
+  experimental_useExperiment(key): boolean {
+    return useSlotEnv("experimental_useExperiment").experiments.has(key);
+  },
   useBbContext(): BbContext {
     return useSlotEnv("useBbContext").bbContext;
   },
@@ -1701,6 +1778,7 @@ const testPluginSdkApp = {
   experimental_ThreadActionsContextMenu: TestThreadActionsContextMenu,
   experimental_PluginRpcCallError,
   experimental_THREAD_ACTION_GROUPS,
+  experimental_THREAD_CONTEXT_SEGMENT_GROUPS,
   experimental_THREAD_INFO_ROW_GROUPS,
   experimental_THREAD_INFO_SECTION_GROUPS,
   experimental_useSidebarNavigation(): ExperimentalSidebarNavigationState {
@@ -1874,6 +1952,7 @@ export interface CapturedPluginApp {
   threadLists: PluginThreadListRegistration[];
   experimentalSidebarNavigations: ExperimentalSidebarNavigationRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
+  threadContextSegments: ExperimentalThreadContextSegmentRegistration[];
   threadInfoRows: ExperimentalThreadInfoRowRegistration[];
   threadInfoSections: ExperimentalThreadInfoSectionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
@@ -2152,6 +2231,8 @@ export interface RenderSlotOptions<
    * report as holding an unsent draft. Omitted → none.
    */
   sidebarDraftThreadIds?: readonly string[];
+  /** Experiment keys `experimental_useExperiment()` reports as on. Omitted → none. */
+  experiments?: readonly string[];
   /**
    * Row statuses `useSidebarThreadRowStatus()` reports, keyed by thread id.
    * Omitted → every thread reports null.
@@ -2187,6 +2268,11 @@ export interface RenderSlotOptions<
    * order. Omitted → an empty list.
    */
   threadActions?: TestThreadActionsResolver;
+  /**
+   * What `experimental_ThreadActionsContextMenu` lists for an
+   * `experimental_bulkThreads`, in menu order. Omitted → an empty list.
+   */
+  threadBulkActions?: TestThreadBulkActionsResolver;
   /**
    * What `experimental_useThreadActionRegistrations()` reports. Omitted → an
    * empty list.
@@ -3039,9 +3125,11 @@ export function renderSlot<
     sidebarNavigationCalls,
     environmentArchiveCalls,
     threadActions: options.threadActions ?? NO_THREAD_ACTIONS,
+    threadBulkActions: options.threadBulkActions ?? NO_THREAD_BULK_ACTIONS,
     threadActionRegistrations:
       options.threadActionRegistrations ?? NO_THREAD_ACTION_REGISTRATIONS,
     sidebarDraftThreadIds,
+    experiments: new Set(options.experiments ?? []),
     sidebarRowStatuses,
     sidebarShortcuts,
     sidebarSplitLayout: options.sidebarSplitLayout ?? null,

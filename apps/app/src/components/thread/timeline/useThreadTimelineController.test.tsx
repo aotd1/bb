@@ -253,7 +253,6 @@ function installAutoLoadEnvironment() {
     getScrollElement: () => scrollElement,
     isAtBottom: false,
     scrollElementIntoView: vi.fn(),
-    scrollElementIntoViewClampedToMaxScroll: vi.fn(),
     scrollToBottom: vi.fn(),
   };
   const emitIntersection = () => {

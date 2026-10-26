@@ -28,8 +28,7 @@ function putGeneralSettings(harness: TestAppHarness, body: object) {
 
 async function configExperiments(harness: TestAppHarness) {
   const response = await harness.app.request("/api/v1/system/config");
-  return systemConfigResponseSchema.parse(await readJson(response))
-    .experiments;
+  return systemConfigResponseSchema.parse(await readJson(response)).experiments;
 }
 
 describe("experiments settings", () => {
@@ -43,7 +42,9 @@ describe("experiments settings", () => {
         compactExpiredCache: false,
         serverMove: false,
         performanceDiagnostics: false,
+        sidebarMultiSelect: false,
         timelinePush: false,
+        unreadDividerAtAnswer: false,
       });
     });
   });
@@ -72,7 +73,9 @@ describe("experiments settings", () => {
           compactExpiredCache: true,
           serverMove: true,
           performanceDiagnostics: true,
+          sidebarMultiSelect: true,
           timelinePush: true,
+          unreadDividerAtAnswer: true,
         }),
       });
       expect(put.status).toBe(200);
@@ -81,14 +84,18 @@ describe("experiments settings", () => {
         compactExpiredCache: true,
         serverMove: true,
         performanceDiagnostics: true,
+        sidebarMultiSelect: true,
         timelinePush: true,
+        unreadDividerAtAnswer: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         changelogPreview: true,
         compactExpiredCache: true,
         serverMove: true,
         performanceDiagnostics: true,
+        sidebarMultiSelect: true,
         timelinePush: true,
+        unreadDividerAtAnswer: true,
       });
 
       const config = await harness.app.request("/api/v1/system/config");
@@ -99,7 +106,9 @@ describe("experiments settings", () => {
         compactExpiredCache: true,
         serverMove: true,
         performanceDiagnostics: true,
+        sidebarMultiSelect: true,
         timelinePush: true,
+        unreadDividerAtAnswer: true,
       });
     });
   });
@@ -114,7 +123,9 @@ describe("experiments settings", () => {
         compactExpiredCache: false,
         serverMove: true,
         performanceDiagnostics: false,
+        sidebarMultiSelect: false,
         timelinePush: false,
+        unreadDividerAtAnswer: false,
       });
       expect(
         harness.db.$client

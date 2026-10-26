@@ -1,12 +1,14 @@
+import {
+  LazyPluginMarkdown,
+  LazyPluginDiff,
+  LazyPluginSourceCode,
+} from "@/components/plugin/lazy-plugin-renderers";
 import { ProviderIcon } from "@/components/plugin/ProviderIcon";
 import { Icon } from "@bb/shared-ui/icon";
-import { useCallback, useMemo } from "react";
 import type {
   ExperimentalInfoListRowProps,
-  MarkdownProps,
   PluginSdkApp,
 } from "@get-bb/plugin-sdk";
-import { PluginDiff } from "@/components/plugin/PluginDiff";
 import { PluginBranchPicker } from "@/components/plugin/PluginBranchPicker";
 import {
   usePluginBranches,
@@ -41,18 +43,11 @@ import {
 import { VoiceInputTextarea } from "@/components/promptbox/VoiceInputTextarea";
 import { PluginProviderModelPicker } from "@/components/plugin/PluginProviderModelPicker";
 import { PluginPermissionModePicker } from "@/components/plugin/PluginPermissionModePicker";
-import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
 import { LazyPluginThreadChat } from "@/components/plugin/LazyPluginThreadChat";
 import { PluginThreadTitle } from "@/components/plugin/PluginThreadTitle";
 import { ThreadStatusGlyph } from "@/components/thread/ThreadStatusGlyph";
 import { PluginUrlLink } from "@/components/plugin/PluginUrlLink";
 import { ExperimentalFileLink } from "@/components/plugin/ExperimentalFileLink";
-import { MarkdownPreview } from "@/components/ui/markdown-preview";
-import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing";
-import { buildMarkdownDocumentLinkRouting } from "@/components/ui/markdown-document-link-routing";
-import { buildMarkdownMessageLinkRouting } from "@/components/ui/markdown-message-link-routing";
-import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
-import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { usePluginId } from "@/components/plugin/plugin-context";
 import { useQuestionFormHost } from "@bb/shared-ui/question-form-host";
 import { definePluginApp } from "./plugin-app-definition";
@@ -90,10 +85,11 @@ import {
   useSidebarSplitLayout,
   useSidebarThreadSplit,
 } from "./plugin-sidebar-split";
-import { useAppNavigationHost } from "./app-navigation-host";
+import { useExperiment } from "./plugin-experiments";
 import {
   experimental_PluginRpcCallError,
   experimental_THREAD_ACTION_GROUPS,
+  experimental_THREAD_CONTEXT_SEGMENT_GROUPS,
   experimental_THREAD_INFO_ROW_GROUPS,
   experimental_THREAD_INFO_SECTION_GROUPS,
 } from "@get-bb/plugin-sdk";
@@ -179,7 +175,7 @@ export const pluginSdkAppImplementation = {
   experimental_useRpcRefresh,
   useSettings,
   ThreadChat: LazyPluginThreadChat,
-  Markdown: PluginMarkdown,
+  Markdown: LazyPluginMarkdown,
   experimental_FileLink: ExperimentalFileLink,
   UrlLink: PluginUrlLink,
   experimental_NewThreadComposer: PluginNewThreadComposer,
@@ -189,8 +185,8 @@ export const pluginSdkAppImplementation = {
   experimental_BranchPicker: PluginBranchPicker,
   experimental_useBranches: usePluginBranches,
   experimental_useCheckoutState: usePluginCheckoutState,
-  experimental_SourceCode: PluginSourceCode,
-  experimental_Diff: PluginDiff,
+  experimental_SourceCode: LazyPluginSourceCode,
+  experimental_Diff: LazyPluginDiff,
   experimental_InfoSection: InfoSection,
   experimental_DetailRow: DetailRow,
   experimental_InfoList: InfoList,
@@ -204,9 +200,11 @@ export const pluginSdkAppImplementation = {
   experimental_ThreadActionsContextMenu: ThreadActionsContextMenu,
   experimental_PluginRpcCallError,
   experimental_THREAD_ACTION_GROUPS,
+  experimental_THREAD_CONTEXT_SEGMENT_GROUPS,
   experimental_THREAD_INFO_ROW_GROUPS,
   experimental_THREAD_INFO_SECTION_GROUPS,
   experimental_useSidebarThreadSplit: useSidebarThreadSplit,
+  experimental_useExperiment: useExperiment,
   experimental_useSidebarNavigation: useSidebarNavigation,
   experimental_useSidebarNavigationSplit: useSidebarNavigationSplit,
   experimental_SidebarNavigationIcon: SidebarNavigationIcon,
@@ -229,50 +227,3 @@ export const pluginSdkAppImplementation = {
 export const retiredPluginSdkAppMembers = {
   experimental_useSidebarThreadPullRequest: useSidebarThreadPullRequest,
 };
-
-function PluginMarkdown({
-  content,
-  className,
-  experimental_document,
-}: MarkdownProps) {
-  const timelineNavigation = useThreadTimelineNavigation();
-  const onOpenLocalFileLink = timelineNavigation?.onOpenLocalFileLink;
-  const threadId = timelineNavigation?.threadId;
-  const workspaceRootPath = timelineNavigation?.workspaceRootPath;
-  const navigation = useAppNavigationHost();
-  const onOpenLink = useCallback<MarkdownPreviewLinkHandler>(
-    ({ href }) => navigation.openUrl({ url: href }),
-    [navigation],
-  );
-  const linkRouting = useMemo<MarkdownLinkRouting>(() => {
-    const messageRouting = buildMarkdownMessageLinkRouting({
-      onOpenLink,
-      onOpenLocalFileLink,
-      threadId,
-      workspaceRootPath,
-    }) ?? { onOpenLink };
-    return experimental_document === undefined
-      ? messageRouting
-      : buildMarkdownDocumentLinkRouting({
-          document: experimental_document,
-          messageRouting,
-          openFilePreview: navigation.openFilePreview,
-        });
-  }, [
-    experimental_document,
-    navigation.openFilePreview,
-    onOpenLink,
-    onOpenLocalFileLink,
-    threadId,
-    workspaceRootPath,
-  ]);
-
-  return (
-    <MarkdownPreview
-      allowHtml
-      content={content}
-      className={className}
-      linkRouting={linkRouting}
-    />
-  );
-}

@@ -19,6 +19,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { DatabaseRestoreIcon } from "./icons/database-restore.js";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DelayedLoading } from "@/components/ui/delayed-loading";
 import {
   DropdownMenu,
@@ -44,6 +45,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import type { EntryCleanupInput } from "./src/storage-types.js";
 import type { storageRpc, State, Policy } from "./src/contract.js";
 import {
   LARGE_FILE_MIN_BYTES,
@@ -98,6 +100,7 @@ function cleanupFeedback(
     | "development"
     | "orphans"
     | "worktrees"
+    | "externalWorktrees"
     | "largeFileCleanup"
     | "archivedFileCleanup",
   hostId: string | null,
@@ -119,6 +122,11 @@ function cleanupFeedback(
       "Checkout cleanup retried",
       "Couldn’t clean up checkouts",
     ],
+    externalWorktrees: [
+      "Removing worktrees created outside BB",
+      "Worktrees removed",
+      "Couldn’t remove worktrees",
+    ],
     largeFileCleanup: [
       "Deleting large archived files",
       "Large archived files deleted",
@@ -137,7 +145,7 @@ function cleanupFeedback(
     failed,
     description,
     background: { hostId },
-    id: `storage:${hostId ?? "all"}:${kind === "development" || kind === "orphans" || kind === "worktrees" ? "maintenance" : kind}`,
+    id: `storage:${hostId ?? "all"}:${kind}`,
   };
 }
 type StorageData = {
@@ -184,19 +192,24 @@ function StoragePanel(props: PluginNavPanelProps) {
     }
   }, [rpc, sdk]);
   const previousJobs = useRef(new Map<string, string>());
+  const observedHosts = useRef(new Set<string>());
+  const previousRemovals = useRef(new Map<string, Map<string, string>>());
   useEffect(() => {
     for (const host of data?.hosts ?? []) {
-      for (const kind of [
-        "largeFileCleanup",
-        "archivedFileCleanup",
-        "maintenance",
-      ] as const) {
-        const job = host[kind];
-        const key = `${host.hostId}:${kind}`;
+      const statuses = [
+        { kind: "largeFileCleanup" as const, job: host.largeFileCleanup },
+        { kind: "archivedFileCleanup" as const, job: host.archivedFileCleanup },
+        ...host.maintenanceJobs.map((job) => ({
+          kind: "maintenance" as const,
+          job,
+        })),
+      ];
+      for (const { kind, job } of statuses) {
+        const key = `${host.hostId}:${"kind" in job ? job.kind : kind}`;
         const signature = JSON.stringify(job);
         const previous = previousJobs.current.get(key);
         if (
-          previous !== undefined &&
+          observedHosts.current.has(host.hostId) &&
           previous !== signature &&
           job.state !== "idle"
         ) {
@@ -210,11 +223,16 @@ function StoragePanel(props: PluginNavPanelProps) {
             host.hostId,
             machine,
           );
-          if (job.state === "running")
-            toast.loading(feedback.title, {
-              id: feedback.id,
-              description: machine,
-            });
+          if (job.state === "running" || job.state === "queued")
+            toast.loading(
+              job.state === "queued"
+                ? `Queued: ${feedback.title}`
+                : feedback.title,
+              {
+                id: feedback.id,
+                description: machine,
+              },
+            );
           if (job.state === "failed")
             toast.error(feedback.failed, {
               id: feedback.id,
@@ -228,6 +246,41 @@ function StoragePanel(props: PluginNavPanelProps) {
         }
         previousJobs.current.set(key, signature);
       }
+      const seen = previousRemovals.current.get(host.hostId);
+      const next = new Map<string, string>();
+      for (const removal of host.externalWorktreeRemovals) {
+        const signature = JSON.stringify(removal);
+        next.set(removal.path, signature);
+        if (seen === undefined || seen.get(removal.path) === signature)
+          continue;
+        const id = worktreeRemovalToastId(host.hostId, removal.path);
+        if (removal.state === "running" || removal.state === "queued")
+          toast.loading(
+            removal.state === "queued"
+              ? "Queued: Removing worktree"
+              : "Removing worktree",
+            {
+              id,
+              description: removal.path,
+            },
+          );
+        else if (removal.state === "completed")
+          toast.success("Worktree removed", {
+            id,
+            description: `${removal.path} · ${bytes(removal.removedBytes)} freed`,
+          });
+        else if (removal.state === "skipped" || removal.state === "failed")
+          toast.error("Couldn’t remove worktree", {
+            id,
+            description: `${removal.path} · ${
+              removal.state === "skipped"
+                ? EXTERNAL_WORKTREE_SKIP_REASONS[removal.reasons[0]!]
+                : removal.message
+            }`,
+          });
+      }
+      previousRemovals.current.set(host.hostId, next);
+      observedHosts.current.add(host.hostId);
     }
   }, [data]);
   useEffect(() => {
@@ -297,17 +350,7 @@ function StoragePage({
   const detail = hosts.find((host) => host.hostId === hostId) ?? null;
   const [savingSetting, setSavingSetting] = useState(false);
   const settingSavePending = useRef(false);
-  const [actionBusy, setBusy] = useState(false);
-  const busy =
-    actionBusy ||
-    hosts.some(
-      (host) =>
-        (hostId === null || host.hostId === hostId) &&
-        (host.largeFileCleanup.state === "running" ||
-          host.archivedFileCleanup.state === "running" ||
-          host.maintenance.state === "running"),
-    );
-  const [rowActions, setRowActions] = useState<Record<string, RowAction>>({});
+  const rowActions = useRef(new Set<string>());
   const [expandedThreadsHostId, setExpandedThreadsHostId] = useState<
     string | null
   >(null);
@@ -335,7 +378,6 @@ function StoragePage({
     },
     success?: (result: T) => string,
   ) {
-    setBusy(true);
     const id = toast.loading(feedback.title, {
       id: feedback.id,
       description: feedback.description,
@@ -358,9 +400,50 @@ function StoragePage({
         id,
         description: `${feedback.description} · ${message(error)}`,
       });
-    } finally {
-      setBusy(false);
     }
+  }
+  async function runEntryCleanup(
+    input: EntryCleanupInput,
+    feedback: ActionFeedback,
+  ) {
+    const { id } = await rpc.call("startEntryCleanup", input);
+    let previous = "";
+    for (;;) {
+      const status = await rpc.call("entryCleanup", { id });
+      if (status.state === "failed") throw new Error(status.message);
+      if (status.state === "completed") return status.result;
+      if (status.state !== previous) {
+        toast.loading(
+          status.state === "queued"
+            ? `Queued: ${feedback.title}`
+            : feedback.title,
+          {
+            id: feedback.id,
+            description: feedback.description,
+          },
+        );
+        previous = status.state;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  async function removeDevelopment(
+    input: { hostId: string; names: string[]; stopRunning: boolean },
+    toastId = developmentToastId(input.hostId, input.names),
+  ) {
+    const result = await runEntryCleanup(
+      { kind: "development", ...input },
+      {
+        id: toastId,
+        title: "Deleting development data",
+        completed: "Development data deleted",
+        failed: "Couldn’t delete development data",
+        description: `${hosts.find((host) => host.hostId === input.hostId)?.report?.developerStorage?.path ?? ""}/${input.names.join(", ")}`,
+      },
+    );
+    if (result.kind !== "development")
+      throw new Error("Unexpected cleanup result");
+    return result;
   }
   async function saveSetting<K extends keyof Policy>(key: K, value: Policy[K]) {
     if (state === null || settingSavePending.current) return;
@@ -393,15 +476,16 @@ function StoragePage({
     feedback: ActionFeedback,
     work: () => Promise<string | null>,
   ) {
-    if (rowActions[key]?.state === "running") return;
-    setRowActions((current) => ({ ...current, [key]: { state: "running" } }));
+    if (rowActions.current.has(key)) return;
+    rowActions.current.add(key);
     const id = toast.loading(feedback.title, {
+      id: feedback.id,
       description: feedback.description,
     });
     try {
       const description = await work();
       if (description === null) toast.dismiss(id);
-      else
+      else if (!feedback.background)
         toast.success(feedback.completed, {
           id,
           description: description || feedback.description,
@@ -413,11 +497,7 @@ function StoragePage({
         description: `${feedback.description} · ${message(error)}`,
       });
     } finally {
-      setRowActions((current) => {
-        const next = { ...current };
-        delete next[key];
-        return next;
-      });
+      rowActions.current.delete(key);
     }
   }
   const retentionOn =
@@ -427,8 +507,13 @@ function StoragePage({
   const report = detail?.report;
   const missingDev =
     report?.developerStorage?.entries.filter(
-      (entry) => entry.sourcePathState === "missing",
+      (entry) => entry.sourcePathState === "missing" && !entry.current,
     ) ?? [];
+  const externalBytes =
+    report?.externalWorktrees.reduce(
+      (total, worktree) => total + worktree.sizeBytes,
+      0,
+    ) ?? 0;
   const missingDevBytes = missingDev.reduce(
     (total, entry) => total + entry.sizeBytes,
     0,
@@ -437,11 +522,7 @@ function StoragePage({
   const scanning = detail?.scan.state === "scanning";
   const machine = hostId ? machines[hostId] : undefined;
   const offline = machine !== undefined && machine.status !== "connected";
-  const rowActionRunning = Object.values(rowActions).some(
-    (action) => action.state === "running",
-  );
-  const locked = busy || offline || rowActionRunning;
-  const rowDisabled = busy || offline;
+  const locked = offline;
   function devInstancesCleanup(target: string, count: number, size: number) {
     return {
       key: "dev-instances",
@@ -495,50 +576,12 @@ function StoragePage({
         : totals,
     { threadCount: 0, fileCount: 0, bytes: 0 },
   );
-  const cleanupStatuses = hosts.filter((host) => {
-    const status = host.largeFileCleanup;
-    return (
-      (hostId === null || host.hostId === hostId) && status.state === "running"
-    );
-  });
-  const cleanupRunning = cleanupStatuses.some(
-    (host) => host.largeFileCleanup.state === "running",
-  );
-  const cleanupStatus = cleanupStatuses.length > 0 && (
-    <div className="space-y-2 border-t border-border pt-3">
-      {cleanupStatuses.map((host) => {
-        const status = host.largeFileCleanup;
-        if (status.state !== "running") return null;
-        return (
-          <p
-            key={host.hostId}
-            role="status"
-            className="flex items-center gap-2 text-xs text-muted-foreground"
-          >
-            <Icon name="Spinner" className="size-3.5 shrink-0 animate-spin" />
-            {hostId === null &&
-              `${machines[host.hostId]?.name ?? host.hostId}: `}
-            Deleting large files…
-          </p>
-        );
-      })}
-    </div>
-  );
   const suggestions =
-    archivedLargeFiles.bytes >= LARGE_FILE_NUDGE_MIN_BYTES ||
-    cleanupStatuses.length > 0
+    archivedLargeFiles.bytes >= LARGE_FILE_NUDGE_MIN_BYTES
       ? [
           {
-            title: cleanupRunning
-              ? "Deleting large files"
-              : archivedLargeFiles.bytes >= LARGE_FILE_NUDGE_MIN_BYTES
-                ? `Free up ${bytes(archivedLargeFiles.bytes)} from archived threads`
-                : "Large-file cleanup",
-            description:
-              cleanupRunning ||
-              archivedLargeFiles.bytes < LARGE_FILE_NUDGE_MIN_BYTES
-                ? "Smaller files and conversation history are kept."
-                : `${plural(archivedLargeFiles.fileCount, "file")} of ${bytes(LARGE_FILE_MIN_BYTES)} or more sit in the thread storage of ${plural(archivedLargeFiles.threadCount, "archived thread")}. Deleting them keeps smaller files like reports, and conversation history isn’t affected.`,
+            title: `Free up ${bytes(archivedLargeFiles.bytes)} from archived threads`,
+            description: `${plural(archivedLargeFiles.fileCount, "file")} of ${bytes(LARGE_FILE_MIN_BYTES)} or more sit in the thread storage of ${plural(archivedLargeFiles.threadCount, "archived thread")}. Deleting them keeps smaller files like reports, and conversation history isn’t affected.`,
             action: "Delete large files",
             cleanup: largeFilesCleanup(null, archivedLargeFiles),
           },
@@ -562,7 +605,7 @@ function StoragePage({
         <Button
           variant="outline"
           size="sm"
-          disabled={busy}
+          disabled={offline}
           onClick={() => setCleanup(null)}
         >
           Cancel
@@ -570,7 +613,7 @@ function StoragePage({
         <Button
           variant="destructive"
           size="sm"
-          disabled={busy}
+          disabled={offline}
           onClick={() =>
             void perform(
               async () => {
@@ -583,7 +626,7 @@ function StoragePage({
             )
           }
         >
-          {busy ? "Removing…" : cleanup.action}
+          {cleanup.action}
         </Button>
       </div>
     </div>
@@ -649,7 +692,7 @@ function StoragePage({
                 variant="outline"
                 size="sm"
                 className="shrink-0"
-                disabled={actionBusy || scanning || offline || !detail}
+                disabled={scanning || offline || !detail}
                 onClick={() =>
                   void perform(() => rpc.call("scanHost", { hostId }))
                 }
@@ -683,15 +726,6 @@ function StoragePage({
               </Button>
             )}
           </div>
-        )}
-        {detail?.maintenance.state === "running" && (
-          <p role="status" className="text-xs text-muted-foreground">
-            {detail.maintenance.kind === "orphans"
-              ? "Removing orphaned storage…"
-              : detail.maintenance.kind === "development"
-                ? "Removing development instances…"
-                : "Retrying worktree cleanup…"}
-          </p>
         )}
         {!state ? (
           !loadError && (
@@ -805,22 +839,6 @@ function StoragePage({
                       }
                     >
                       {cleanup?.key === "archived-files" && cleanupConfirmation}
-                      {detail?.archivedFileCleanup &&
-                        detail.archivedFileCleanup.state === "running" && (
-                          <p
-                            role="status"
-                            className="mt-3 text-xs text-muted-foreground"
-                          >
-                            Removing archived files in the background. Cleared{" "}
-                            {bytes(detail.archivedFileCleanup.clearedBytes)}{" "}
-                            from{" "}
-                            {plural(
-                              detail.archivedFileCleanup.clearedThreads,
-                              "thread",
-                            )}
-                            .
-                          </p>
-                        )}
                     </CleanupRow>
                     <CleanupRow
                       title="Large files in archived threads"
@@ -844,7 +862,6 @@ function StoragePage({
                       }
                     >
                       {cleanup?.key === "large-files" && cleanupConfirmation}
-                      {cleanupStatus}
                     </CleanupRow>
                     <CleanupRow
                       title="Orphaned storage"
@@ -925,6 +942,119 @@ function StoragePage({
                         </details>
                       )}
                     </CleanupRow>
+                    <CleanupRow
+                      title="Worktrees created outside BB"
+                      size={externalBytes}
+                      description="Git worktrees of your projects that BB didn’t create, such as ones agents added with git worktree add. Removing them keeps their branches. Bulk removal keeps worktrees with uncommitted changes, locked worktrees, and detached worktrees with commits on no branch; remove those one at a time."
+                      action="Remove worktrees"
+                      disabled={locked || report.externalWorktrees.length === 0}
+                      onAction={() =>
+                        setCleanup({
+                          key: "external-worktrees",
+                          feedback: cleanupFeedback(
+                            "externalWorktrees",
+                            report.hostId,
+                            machine?.name ?? report.hostId,
+                          ),
+                          action: "Remove worktrees",
+                          title: `Remove ${plural(report.externalWorktrees.length, "worktree")} created outside BB (${bytes(externalBytes)})?`,
+                          detail:
+                            "Delete these checkouts, including ignored files such as dependencies, build output, and local env files. Branches and commits stay in the repository. Worktrees with uncommitted changes, locked worktrees, and detached worktrees with commits on no branch are kept; remove those one at a time. Make sure no agent is still working in them. This can’t be undone.",
+                          run: async () => {
+                            await rpc.call("startCleanup", {
+                              kind: "externalWorktrees",
+                              hostId: report.hostId,
+                            });
+                            return "Worktree removal started in the background.";
+                          },
+                        })
+                      }
+                    >
+                      {cleanup?.key === "external-worktrees" &&
+                        cleanupConfirmation}
+                      {report.externalWorktrees.length > 0 && (
+                        <ExternalWorktrees
+                          worktrees={report.externalWorktrees}
+                          projectNames={
+                            new Map(
+                              report.projectWorktrees.map((project) => [
+                                project.projectId,
+                                project.projectName,
+                              ]),
+                            )
+                          }
+                          rowDisabled={locked}
+                          confirmationKey={cleanup?.key ?? null}
+                          confirmation={cleanupConfirmation}
+                          onRemove={(worktree, label) => {
+                            const feedback = {
+                              title: "Removing worktree",
+                              completed: "Worktree removed",
+                              failed: "Couldn’t remove worktree",
+                              description: worktree.path,
+                              id: worktreeRemovalToastId(
+                                report.hostId,
+                                worktree.path,
+                              ),
+                              background: { hostId: report.hostId },
+                            };
+                            const start = (force: boolean) =>
+                              rpc.call("startRemoveExternalWorktree", {
+                                hostId: report.hostId,
+                                path: worktree.path,
+                                force,
+                              });
+                            void runRowAction(
+                              `worktree:${worktree.path}`,
+                              feedback,
+                              async () => {
+                                const result = await start(false);
+                                if (result.state === "started")
+                                  return worktree.path;
+                                const forceable = result.reasons.filter(
+                                  (reason) =>
+                                    reason === "locked" ||
+                                    reason === "uncommittedChanges" ||
+                                    reason === "unsavedCommits",
+                                );
+                                if (forceable.length !== result.reasons.length)
+                                  throw new Error(
+                                    EXTERNAL_WORKTREE_SKIP_REASONS[
+                                      result.reasons[0]!
+                                    ],
+                                  );
+                                setCleanup({
+                                  key: `external-worktree:${worktree.path}`,
+                                  feedback,
+                                  action: "Remove anyway",
+                                  title: `Remove “${label}” anyway (${bytes(worktree.sizeBytes)})?`,
+                                  detail: [
+                                    ...forceable.map(
+                                      (reason) =>
+                                        EXTERNAL_WORKTREE_FORCE_WARNINGS[
+                                          reason
+                                        ],
+                                    ),
+                                    "The checkout is deleted, including ignored files. Its branch is kept. This can’t be undone.",
+                                  ].join(" "),
+                                  run: async () => {
+                                    const forced = await start(true);
+                                    if (forced.state === "skipped")
+                                      throw new Error(
+                                        EXTERNAL_WORKTREE_SKIP_REASONS[
+                                          forced.reasons[0]!
+                                        ],
+                                      );
+                                    return worktree.path;
+                                  },
+                                });
+                                return null;
+                              },
+                            );
+                          }}
+                        />
+                      )}
+                    </CleanupRow>
                     {report.developerStorage && (
                       <CleanupRow
                         title="Development instances without a checkout"
@@ -963,7 +1093,6 @@ function StoragePage({
                       ? report.largestThreads
                       : report.largestThreads.slice(0, PREVIEW_COUNT)
                     ).map((thread) => {
-                      const clear = rowActions[thread.threadId];
                       return (
                         <div
                           key={thread.threadId}
@@ -983,10 +1112,6 @@ function StoragePage({
                               ]}
                               onOpen={() => navigate.toThread(thread.threadId)}
                             />
-                            <RowActionStatus
-                              action={clear}
-                              runningLabel="Clearing files…"
-                            />
                           </div>
                           <div className="flex h-5 shrink-0 items-center gap-2">
                             <span className="text-xs tabular-nums text-muted-foreground">
@@ -995,21 +1120,31 @@ function StoragePage({
                             <RowActionButton
                               label="Clear files"
                               target={thread.title}
-                              action={clear}
-                              disabled={rowDisabled || thread.running}
+                              disabled={locked || thread.running}
                               onClick={() =>
                                 void runRowAction(
                                   thread.threadId,
                                   {
+                                    id: `storage:thread:${thread.threadId}`,
                                     title: "Deleting thread files",
                                     completed: "Thread files deleted",
                                     failed: "Couldn’t delete thread files",
                                     description: thread.title,
                                   },
                                   async () => {
-                                    await rpc.call("clearThread", {
-                                      threadId: thread.threadId,
-                                    });
+                                    await runEntryCleanup(
+                                      {
+                                        kind: "thread",
+                                        threadId: thread.threadId,
+                                      },
+                                      {
+                                        id: `storage:thread:${thread.threadId}`,
+                                        title: "Deleting thread files",
+                                        completed: "Thread files deleted",
+                                        failed: "Couldn’t delete thread files",
+                                        description: thread.title,
+                                      },
+                                    );
                                     return thread.title;
                                   },
                                 )
@@ -1037,21 +1172,76 @@ function StoragePage({
                 {report.developerStorage && (
                   <DeveloperStorage
                     storage={report.developerStorage}
-                    rowDisabled={rowDisabled}
-                    rowActions={rowActions}
+                    rowDisabled={locked}
                     confirmationKey={cleanup?.key ?? null}
                     confirmation={cleanupConfirmation}
+                    onRemoveSelected={(entries) => {
+                      const size = entries.reduce(
+                        (total, entry) => total + entry.sizeBytes,
+                        0,
+                      );
+                      const running = entries.filter(
+                        (entry) => entry.running,
+                      ).length;
+                      setCleanup({
+                        key: "dev-selected",
+                        feedback: {
+                          id: developmentToastId(
+                            report.hostId,
+                            entries.map((entry) => entry.name),
+                          ),
+                          title: "Deleting development data",
+                          completed: "Development data deleted",
+                          failed: "Couldn’t delete development data",
+                          description: plural(
+                            entries.length,
+                            "development instance",
+                          ),
+                        },
+                        action: "Remove instances",
+                        title: `Remove ${plural(entries.length, "development instance")} (${bytes(size)})?`,
+                        detail: `Delete their databases, logs, and thread files. Source checkouts are kept.${running > 0 ? ` ${plural(running, "dev server")} running at the last scan ${running === 1 ? "is" : "are"} stopped first.` : ""} This can’t be undone.`,
+                        run: async () => {
+                          let removedCount = 0;
+                          let removedBytes = 0;
+                          for (
+                            let offset = 0;
+                            offset < entries.length;
+                            offset += 500
+                          ) {
+                            const result = await removeDevelopment(
+                              {
+                                hostId: report.hostId,
+                                names: entries
+                                  .slice(offset, offset + 500)
+                                  .map((entry) => entry.name),
+                                stopRunning: true,
+                              },
+                              developmentToastId(
+                                report.hostId,
+                                entries.map((entry) => entry.name),
+                              ),
+                            );
+                            removedCount += result.removedCount;
+                            removedBytes += result.removedBytes;
+                          }
+
+                          return `${plural(removedCount, "instance")} removed · ${bytes(removedBytes)} freed`;
+                        },
+                      });
+                    }}
                     onRemove={(entry, label) =>
                       void runRowAction(
                         `dev:${entry.name}`,
                         {
+                          id: developmentToastId(report.hostId, [entry.name]),
                           title: "Deleting development data",
                           completed: "Development data deleted",
                           failed: "Couldn’t delete development data",
                           description: `${report.developerStorage!.path}/${entry.name}`,
                         },
                         async () => {
-                          const result = await rpc.call("removeDevInstances", {
+                          const result = await removeDevelopment({
                             hostId: report.hostId,
                             names: [entry.name],
                             stopRunning: false,
@@ -1060,6 +1250,9 @@ function StoragePage({
                             setCleanup({
                               key: `dev-instance:${entry.name}`,
                               feedback: {
+                                id: developmentToastId(report.hostId, [
+                                  entry.name,
+                                ]),
                                 title: "Deleting development data",
                                 completed: "Development data deleted",
                                 failed: "Couldn’t delete development data",
@@ -1070,25 +1263,15 @@ function StoragePage({
                               detail:
                                 "Its dev server is running. BB will stop it, then delete its database, logs, and thread files. The source checkout is kept. This can’t be undone.",
                               run: async () => {
-                                const stopped = await rpc.call(
-                                  "removeDevInstances",
-                                  {
-                                    hostId: report.hostId,
-                                    names: [entry.name],
-                                    stopRunning: true,
-                                  },
-                                );
-                                if (stopped.removedCount === 0)
-                                  throw new Error(
-                                    "No data was deleted. Rescan the machine to update its status.",
-                                  );
+                                const stopped = await removeDevelopment({
+                                  hostId: report.hostId,
+                                  names: [entry.name],
+                                  stopRunning: true,
+                                });
+
                                 return `${report.developerStorage!.path}/${entry.name} · ${bytes(stopped.removedBytes)} freed`;
                               },
                             });
-                          else if (result.removedCount === 0)
-                            throw new Error(
-                              "No data was deleted. Rescan the machine to update its status.",
-                            );
                           else
                             return `${report.developerStorage!.path}/${entry.name} · ${bytes(result.removedBytes)} freed`;
                           return null;
@@ -1122,14 +1305,13 @@ function StoragePage({
                     variant="outline"
                     size="sm"
                     className="shrink-0"
-                    disabled={busy || archivedLargeFiles.fileCount === 0}
+                    disabled={archivedLargeFiles.fileCount === 0}
                     onClick={() => setCleanup(suggestion.cleanup)}
                   >
                     {suggestion.action}
                   </Button>
                 </div>
                 {cleanup?.key === suggestion.cleanup.key && cleanupConfirmation}
-                {cleanupStatus}
               </div>
             ))}
             <section className="space-y-3">
@@ -1139,7 +1321,7 @@ function StoragePage({
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={actionBusy || scannable.length === 0}
+                    disabled={scannable.length === 0}
                     onClick={() =>
                       void perform(() => rpc.call("scanAll", null))
                     }
@@ -1167,7 +1349,6 @@ function StoragePage({
                     host={host}
                     machine={machines[host.hostId]}
                     server={host.hostId === primaryHostId}
-                    busy={actionBusy}
                     onOpen={() =>
                       navigate.toPluginPanel(PANEL, { subPath: host.hostId })
                     }
@@ -1491,14 +1672,12 @@ function MachineRow({
   host,
   machine,
   server,
-  busy,
   onOpen,
   onScan,
 }: {
   host: Hosts[number];
   machine: Machine | undefined;
   server: boolean;
-  busy: boolean;
   onOpen: () => void;
   onScan: () => void;
 }) {
@@ -1582,7 +1761,7 @@ function MachineRow({
           size="icon"
           className="size-7"
           aria-label={`${report ? "Rescan" : "Scan"} ${name}`}
-          disabled={busy || scanning || machine?.status !== "connected"}
+          disabled={scanning || machine?.status !== "connected"}
           onClick={onScan}
         >
           <Icon
@@ -1657,9 +1836,9 @@ function ProjectWorktrees({
     <section className="space-y-3">
       <SectionHeading
         title="Worktrees by project"
-        description="Managed worktrees BB tracks on this machine. Projects with a source here are included even when they have no worktrees. These counts are separate from thread files."
+        description="BB worktrees are the managed checkouts BB tracks. Other worktrees were added to the same repositories outside BB, for example by agents running git worktree add. Projects with a source here are included even when they have no worktrees. These counts are separate from thread files."
       />
-      <div className="rounded-lg border border-border bg-card px-4 py-2">
+      <div className="overflow-x-auto rounded-lg border border-border bg-card px-4 py-2">
         {report.projectWorktrees.length === 0 ? (
           <p className="py-3 text-xs text-muted-foreground">
             No projects with sources or managed worktrees on this machine.
@@ -1671,13 +1850,28 @@ function ProjectWorktrees({
             </caption>
             <thead>
               <tr className="text-muted-foreground">
-                <th scope="col" className="py-2 text-left font-normal">
+                <th
+                  scope="col"
+                  className="w-full py-2 text-left align-bottom font-normal"
+                >
                   Project
                 </th>
-                <th scope="col" className="py-2 pl-3 text-right font-normal">
-                  Worktrees
+                <th
+                  scope="col"
+                  className="py-2 pl-3 text-right align-bottom font-normal sm:whitespace-nowrap sm:pl-6"
+                >
+                  BB worktrees
                 </th>
-                <th scope="col" className="py-2 pl-3 text-right font-normal">
+                <th
+                  scope="col"
+                  className="py-2 pl-3 text-right align-bottom font-normal sm:whitespace-nowrap sm:pl-6"
+                >
+                  Other worktrees
+                </th>
+                <th
+                  scope="col"
+                  className="py-2 pl-3 text-right align-bottom font-normal sm:whitespace-nowrap sm:pl-6"
+                >
                   Awaiting cleanup
                 </th>
               </tr>
@@ -1685,13 +1879,24 @@ function ProjectWorktrees({
             <tbody className="divide-y divide-border">
               {report.projectWorktrees.map((project) => (
                 <tr key={project.projectId}>
-                  <th scope="row" className="py-3 text-left font-normal">
+                  <th
+                    scope="row"
+                    className="py-3 text-left align-top font-normal break-words"
+                  >
                     {project.projectName}
                   </th>
-                  <td className="py-3 pl-3 text-right font-normal tabular-nums">
+                  <td className="whitespace-nowrap py-3 pl-3 text-right align-top font-normal tabular-nums sm:pl-6">
                     {project.worktreeCount.toLocaleString()}
                   </td>
-                  <td className="py-3 pl-3 text-right tabular-nums text-muted-foreground">
+                  <td className="whitespace-nowrap py-3 pl-3 text-right align-top font-normal tabular-nums sm:pl-6">
+                    {project.externalCount.toLocaleString()}
+                    {project.externalBytes > 0 && (
+                      <span className="block text-muted-foreground">
+                        {bytes(project.externalBytes)}
+                      </span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap py-3 pl-3 text-right align-top tabular-nums text-muted-foreground sm:pl-6">
                     {project.cleanupPendingCount.toLocaleString()}
                   </td>
                 </tr>
@@ -1704,22 +1909,182 @@ function ProjectWorktrees({
   );
 }
 
-type RowAction = { state: "running" };
+type ExternalWorktree = NonNullable<
+  HostReport["report"]
+>["externalWorktrees"][number];
+
+function developmentToastId(hostId: string, names: string[]) {
+  return `storage:${hostId}:dev:${JSON.stringify([...names].sort())}`;
+}
+
+function worktreeRemovalToastId(hostId: string, worktreePath: string) {
+  return `storage:${hostId}:worktree:${worktreePath}`;
+}
+
+const EXTERNAL_WORKTREE_SKIP_REASONS = {
+  notWorktree: "It is no longer a worktree of this repository",
+  locked: "The worktree is locked",
+  uncommittedChanges: "The worktree has uncommitted changes",
+  unsavedCommits: "The worktree has commits that are not on any branch",
+  inUseByBb: "A BB environment now uses this worktree",
+} as const;
+
+const EXTERNAL_WORKTREE_FORCE_WARNINGS = {
+  locked:
+    "It is locked, which usually means a tool or agent still relies on it.",
+  uncommittedChanges: "Its uncommitted and untracked changes are deleted.",
+  unsavedCommits:
+    "Its commits that aren’t on any branch or tag become unreachable, and git deletes them in a later cleanup.",
+} as const;
+
+function externalWorktreeWarnings(worktree: ExternalWorktree) {
+  return [
+    ...(worktree.changedFileCount
+      ? [plural(worktree.changedFileCount, "uncommitted change")]
+      : []),
+    ...(worktree.unsavedCommitCount
+      ? [`${plural(worktree.unsavedCommitCount, "commit")} on no branch`]
+      : []),
+  ];
+}
+
+function ExternalWorktrees({
+  worktrees,
+  projectNames,
+  rowDisabled,
+  confirmationKey,
+  confirmation,
+  onRemove,
+}: {
+  worktrees: ExternalWorktree[];
+  projectNames: ReadonlyMap<string, string>;
+  rowDisabled: boolean;
+  confirmationKey: string | null;
+  confirmation: ReactNode;
+  onRemove: (worktree: ExternalWorktree, label: string) => void;
+}) {
+  const navigate = useBbNavigate();
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const groups = new Map<string, ExternalWorktree[]>();
+  for (const worktree of worktrees)
+    groups.set(worktree.repositoryPath, [
+      ...(groups.get(worktree.repositoryPath) ?? []),
+      worktree,
+    ]);
+  return (
+    <details className="text-xs text-muted-foreground">
+      <summary className="cursor-pointer">
+        {plural(worktrees.length, "worktree")} found
+      </summary>
+      <div className="mt-3 space-y-4">
+        {[...groups].map(([repositoryPath, group]) => (
+          <div key={repositoryPath} className="space-y-2">
+            <h3 className="break-all">
+              <span className="font-medium text-foreground">
+                {projectNames.get(group[0]!.projectId) ?? "Unknown project"}
+              </span>{" "}
+              · {repositoryPath}{" "}
+              <span className="tabular-nums">({group.length})</span>
+            </h3>
+            {(expanded.has(repositoryPath)
+              ? group
+              : group.slice(0, PREVIEW_COUNT)
+            ).map((worktree) => {
+              const label =
+                worktree.branch ??
+                worktree.path.split(/[\\/]/).filter(Boolean).at(-1) ??
+                worktree.path;
+              const thread = worktree.threads[0];
+              const warnings = externalWorktreeWarnings(worktree);
+              return (
+                <div
+                  key={worktree.path}
+                  className="space-y-3 border-l border-border pl-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <p className="truncate text-sm text-foreground">
+                        {label}
+                        {worktree.locked && (
+                          <>
+                            {" "}
+                            <Pill className="inline-block align-middle">
+                              locked
+                            </Pill>
+                          </>
+                        )}
+                      </p>
+                      <p className="break-all">{worktree.path}</p>
+                      {warnings.length > 0 && (
+                        <p className="text-foreground">
+                          {warnings.join(" · ")}
+                        </p>
+                      )}
+                      {(worktree.lastActivityAt !== null || thread) && (
+                        <p>
+                          {worktree.lastActivityAt !== null &&
+                            `Last git activity ${ago(worktree.lastActivityAt)}`}
+                          {worktree.lastActivityAt !== null && thread && " · "}
+                          {thread && (
+                            <button
+                              className="hover:text-foreground hover:underline"
+                              onClick={() => navigate.toThread(thread.threadId)}
+                            >
+                              {thread.title}
+                              {thread.archived && " (archived)"}
+                            </button>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex h-5 shrink-0 items-center gap-2">
+                      <span className="tabular-nums">
+                        {bytes(worktree.sizeBytes)}
+                      </span>
+                      <RowActionButton
+                        label="Remove worktree"
+                        target={label}
+                        disabled={rowDisabled}
+                        onClick={() => onRemove(worktree, label)}
+                      />
+                    </div>
+                  </div>
+                  {confirmationKey === `external-worktree:${worktree.path}` &&
+                    confirmation}
+                </div>
+              );
+            })}
+            {group.length > PREVIEW_COUNT && (
+              <ShowMoreToggle
+                expanded={expanded.has(repositoryPath)}
+                total={group.length}
+                onToggle={() =>
+                  setExpanded((current) => {
+                    const next = new Set(current);
+                    if (!next.delete(repositoryPath)) next.add(repositoryPath);
+                    return next;
+                  })
+                }
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
 
 function RowActionButton({
   label,
   target,
-  action,
   disabled,
   onClick,
 }: {
   label: string;
   target: string;
-  action: RowAction | undefined;
   disabled: boolean;
   onClick: () => void;
 }) {
-  const running = action?.state === "running";
   return (
     <TooltipProvider delayDuration={250}>
       <Tooltip>
@@ -1729,33 +2094,15 @@ function RowActionButton({
             size="icon"
             className="-my-1.5 size-7 text-muted-foreground hover:text-destructive"
             aria-label={`${label}: ${target}`}
-            disabled={disabled || running}
+            disabled={disabled}
             onClick={onClick}
           >
-            <Icon
-              name={running ? "Spinner" : "Trash2"}
-              className={cn("size-4", running && "animate-spin")}
-            />
+            <Icon name="Trash2" className="size-4" />
           </Button>
         </TooltipTrigger>
         <TooltipContent>{label}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
-  );
-}
-
-function RowActionStatus({
-  action,
-  runningLabel,
-}: {
-  action: RowAction | undefined;
-  runningLabel: string;
-}) {
-  if (action === undefined) return null;
-  return (
-    <p role="status" className="text-xs text-muted-foreground">
-      {runningLabel}
-    </p>
   );
 }
 
@@ -1805,17 +2152,17 @@ function ShowMoreToggle({
 function DeveloperStorage({
   storage,
   rowDisabled,
-  rowActions,
   confirmationKey,
   confirmation,
   onRemove,
+  onRemoveSelected,
 }: {
   storage: NonNullable<NonNullable<HostReport["report"]>["developerStorage"]>;
   rowDisabled: boolean;
-  rowActions: Record<string, RowAction>;
   confirmationKey: string | null;
   confirmation: ReactNode;
   onRemove: (entry: DeveloperEntry, label: string) => void;
+  onRemoveSelected: (entries: DeveloperEntry[]) => void;
 }) {
   const navigate = useBbNavigate();
   const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(
@@ -1835,14 +2182,35 @@ function DeveloperStorage({
   const unresolved = storage.entries.filter(
     (entry) => entry.sourcePath === null,
   );
+  const archived = storage.entries.filter(
+    (entry) =>
+      entry.threads.length > 0 &&
+      entry.threads.every((thread) => thread.archived),
+  );
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const selectedEntries = storage.entries.filter((entry) =>
+    selected.has(entry.name),
+  );
+  const setSelection = (entries: DeveloperEntry[], checked: boolean) =>
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const entry of entries)
+        if (checked && !entry.current) next.add(entry.name);
+        else next.delete(entry.name);
+      return next;
+    });
+  const selectable = (entries: DeveloperEntry[]) =>
+    entries.filter((entry) => !entry.current);
   const filtered =
     filter === "missing"
       ? missing
-      : filter === "unlinked"
-        ? unlinked
-        : filter === "unresolved"
-          ? unresolved
-          : storage.entries;
+      : filter === "archived"
+        ? archived
+        : filter === "unlinked"
+          ? unlinked
+          : filter === "unresolved"
+            ? unresolved
+            : storage.entries;
   const groups = [
     {
       title: "Linked threads",
@@ -1910,6 +2278,9 @@ function DeveloperStorage({
               <SelectItem value="missing">
                 Missing checkouts ({missing.length})
               </SelectItem>
+              <SelectItem value="archived">
+                Archived threads only ({archived.length})
+              </SelectItem>
               <SelectItem value="unlinked">
                 Other instances ({unlinked.length})
               </SelectItem>
@@ -1919,23 +2290,80 @@ function DeveloperStorage({
             </SelectContent>
           </Select>
         </div>
+        {selectedEntries.length > 0 && (
+          <div className="space-y-3">
+            <div
+              role="status"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-muted/50 px-3 py-2"
+            >
+              <p className="text-xs tabular-nums">
+                {plural(selectedEntries.length, "instance")} selected ·{" "}
+                {bytes(
+                  selectedEntries.reduce(
+                    (total, entry) => total + entry.sizeBytes,
+                    0,
+                  ),
+                )}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelected(new Set())}
+                >
+                  Clear selection
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={rowDisabled}
+                  onClick={() => onRemoveSelected(selectedEntries)}
+                >
+                  Remove selected
+                </Button>
+              </div>
+            </div>
+            {confirmationKey === "dev-selected" && confirmation}
+          </div>
+        )}
         <div className="divide-y divide-border border-t border-border">
           {groups
             .filter((group) => group.entries.length > 0)
             .map((group) => (
               <div key={group.title} className="py-3">
-                <h3 className="text-xs font-medium text-muted-foreground">
-                  {group.title}{" "}
-                  <span className="font-normal tabular-nums text-muted-foreground">
-                    ({group.entries.length.toLocaleString()})
-                  </span>
-                  {group.description && (
-                    <span className="font-normal text-subtle-foreground/75">
-                      {" "}
-                      · {group.description}
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    aria-label={`Select all ${group.title.toLowerCase()}`}
+                    checked={
+                      selectable(group.entries).length > 0 &&
+                      selectable(group.entries).every((entry) =>
+                        selected.has(entry.name),
+                      )
+                        ? true
+                        : group.entries.some((entry) =>
+                              selected.has(entry.name),
+                            )
+                          ? "indeterminate"
+                          : false
+                    }
+                    onCheckedChange={(checked) =>
+                      setSelection(selectable(group.entries), checked === true)
+                    }
+                    disabled={selectable(group.entries).length === 0}
+                  />
+                  <h3 className="text-xs font-medium text-muted-foreground">
+                    {group.title}{" "}
+                    <span className="font-normal tabular-nums text-muted-foreground">
+                      ({group.entries.length.toLocaleString()})
                     </span>
-                  )}
-                </h3>
+                    {group.description && (
+                      <span className="font-normal text-subtle-foreground/75">
+                        {" "}
+                        · {group.description}
+                      </span>
+                    )}
+                  </h3>
+                </div>
                 <div className="mt-2 space-y-3">
                   {(expandedGroups.has(group.title)
                     ? group.entries
@@ -1943,10 +2371,18 @@ function DeveloperStorage({
                   ).map((entry) => {
                     const primary = entry.threads[0];
                     const label = primary?.title ?? developerEntryLabel(entry);
-                    const removal = rowActions[`dev:${entry.name}`];
                     return (
                       <div key={entry.name} className="space-y-3">
                         <div className="flex items-start justify-between gap-3">
+                          <Checkbox
+                            className="mt-0.5"
+                            aria-label={`Select ${label}`}
+                            disabled={entry.current}
+                            checked={selected.has(entry.name)}
+                            onCheckedChange={(checked) =>
+                              setSelection([entry], checked === true)
+                            }
+                          />
                           <div className="min-w-0 flex-1 space-y-1">
                             {primary ? (
                               <ThreadTitle
@@ -1979,16 +2415,18 @@ function DeveloperStorage({
                                   Could not check whether the checkout exists
                                 </p>
                               )}
-                            {entry.running &&
+                            {entry.current ? (
+                              <p className="text-xs text-muted-foreground">
+                                This BB is running from this instance
+                              </p>
+                            ) : (
+                              entry.running &&
                               entry.sourcePathState !== "missing" && (
                                 <p className="text-xs text-muted-foreground">
                                   Dev server running at last scan
                                 </p>
-                              )}
-                            <RowActionStatus
-                              action={removal}
-                              runningLabel="Removing instance…"
-                            />
+                              )
+                            )}
                           </div>
                           <div className="flex h-5 shrink-0 items-center gap-2">
                             <span className="text-xs font-normal tabular-nums text-muted-foreground">
@@ -1997,8 +2435,7 @@ function DeveloperStorage({
                             <RowActionButton
                               label="Remove instance"
                               target={label}
-                              action={removal}
-                              disabled={rowDisabled}
+                              disabled={rowDisabled || entry.current}
                               onClick={() => onRemove(entry, label)}
                             />
                             <DropdownMenu>

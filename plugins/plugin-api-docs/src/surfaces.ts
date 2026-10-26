@@ -152,6 +152,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "BbNavigate.toCompose",
           "experimental_useSidebarThreadSplit",
           "PluginSidebarThreadSplit",
+          "PluginSidebarThreadSplitOptions",
+          "experimental_useExperiment",
           "useSidebarThreadDraft",
           "PluginSidebarThreadDraftState",
           "useSidebarThreadDraftIds",
@@ -221,7 +223,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Add an action to every thread menu and the sidebar row's quick actions. With this, a plugin can:",
         bullets: [
-          "Appear in the header menu, the row menu, the right-click menu, and the long-press drawer",
+          "Appear in every thread menu, the long-press drawer, and the menu for several selected threads",
           "Offer a list of choices that bb renders as a submenu, a drawer step, or a popover",
           "Read app-wide data once and derive each thread's entry from it",
           "Render bb's own thread menus in a replacement thread list",
@@ -230,6 +232,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginThreadActionRegistration",
           "PluginThreadActionDataInput",
           "PluginThreadActionItemInput",
+          "PluginThreadActionBulkItemInput",
           "PluginThreadActionTarget",
           "PluginThreadAction",
           "PluginThreadActionChoices",
@@ -365,7 +368,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "experimental_InfoListRow",
           "ExperimentalInfoListRowProps",
         ],
-        firstParty: ["Automations"],
+        firstParty: ["Automations", "GitHub PR Status"],
         experimental: true,
       },
       {
@@ -575,9 +578,20 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Warn or inform before someone sends, such as a rate limit or a retry",
           "Show only on new threads, open threads, or queued messages",
+          "Add a segment to an open thread's context row, with details below it",
         ],
-        apiSymbols: ["ComposerCustomization", "PluginComposerScope"],
-        firstParty: ["Send later", "Workflows"],
+        apiSymbols: [
+          "ComposerCustomization",
+          "PluginComposerScope",
+          "PluginAppSlots.experimental_threadContextSegment",
+          "experimental_THREAD_CONTEXT_SEGMENT_GROUPS",
+          "ExperimentalThreadContextSegmentRegistration",
+          "ExperimentalThreadContextSegmentProps",
+          "ExperimentalThreadContextSegmentInput",
+          "ExperimentalThreadContextSegmentReference",
+          "ExperimentalThreadEnvironment",
+        ],
+        firstParty: ["Send later", "Workflows", "GitHub PR Status"],
       },
       {
         id: "composer-state",
@@ -1330,11 +1344,15 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Translate an agent CLI or SDK into bb's timeline, tool calls, approvals, and usage",
           "Run any Agent Client Protocol agent through the bundled ACP bridge, with no bridge code",
-          "Show the agent's own skills, slash commands, and plugins inside bb",
+          "Show native skills, commands, and plugins; validate selections with the shared skills index",
           "Test it against bb's conformance suite and recorded sessions, without a running bb",
         ],
         apiSymbols: [
           "experimental_defineProviderBridge",
+          "experimental_scanSkillFiles",
+          "experimental_selectedSkillMentions",
+          "ExperimentalSkillScanRoot",
+          "ExperimentalIndexedSkillFile",
           "ProviderBridgeDefinition",
           "ProviderBridgeContext",
           "ProviderBridgeEntry",
@@ -1433,6 +1451,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginBbSdk.threads.queuedMessages.experimental_holdForEdit",
           "PluginBbSdk.threads.queuedMessages.experimental_releaseEditHold",
           "PluginBbSdk.threads.experimental_listDescendants",
+          "PluginBbSdk.threads.experimental_listCascade",
         ],
         firstParty: [
           "Account Pooler [Experimental]",

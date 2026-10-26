@@ -413,6 +413,10 @@ chat-pane focus). These start unassigned on Windows/Linux to preserve native
 Control-arrow editing. `pane.focus.previous` / `pane.focus.next` and
 `panel.fullScreen.toggle` start unassigned.
 
+`thread.rename`, `thread.archive`, `thread.markRead`, and `thread.pin` start
+unassigned and act on the focused pane's open thread; Mark read and Pin toggle
+like the matching thread menu item.
+
 | Area      | Command                                      | Default                     | Availability             |
 | --------- | -------------------------------------------- | --------------------------- | ------------------------ |
 | Palette   | Quick palette                                | `Mod+Shift+P`               | All clients              |
@@ -421,6 +425,8 @@ Control-arrow editing. `pane.focus.previous` / `pane.focus.next` and
 | Threads   | Search threads                               | `Mod+K`                     | All clients              |
 | Threads   | Rename focused thread                        | Unassigned                  | Thread view              |
 | Threads   | Archive focused thread                       | Unassigned                  | Thread view              |
+| Threads   | Mark focused thread read or unread           | Unassigned                  | Thread view              |
+| Threads   | Pin or unpin focused thread                  | Unassigned                  | Thread view              |
 | Threads   | Previous / next thread                       | Surface defaults above      | Desktop / web            |
 | Threads   | Open visible thread 1–9                      | Platform defaults above     | Web / desktop            |
 | Layout    | Previous / next chat pane                    | Unassigned                  | While split              |
@@ -580,6 +586,27 @@ User-level skills live under `<dataDir>/skills/<name>/SKILL.md` (usually
 `<workspace>/.bb/skills/<name>/SKILL.md`. Enabled plugins contribute
 `skills/<name>/SKILL.md` (relocatable with the manifest's `bb.skills` field).
 Project skills override user skills, which override plugin skills, by name.
+
+All skill discovery uses the shared skills index. User roots, skill directories,
+and `SKILL.md` entries may be symlinks. Project skills and Markdown commands may
+follow links only within their workspace (or the repository boundary for an
+ancestor root). Traversal resolves real paths and stops cycles. Each recursive
+skill root reads at most 1,000 folders and each command root at most 1,000
+entries; files inside skill folders do not count. Supporting files in an
+injected skill tree must remain ordinary files and directories; linking the root
+or `SKILL.md` is supported.
+
+`bb skill list`, the SDK, and the Skills page collapse registrations that share a
+name and identical `SKILL.md` bytes, preferring provider-neutral and user-wide
+registrations. Different contents with the same name, and identical contents under
+different names, remain distinct. Previously issued registration IDs still address
+their original registration. Linked registrations are read-only in bb. Runtime
+catalogs collapse skills with the same name and identical trees, and Claude Code
+omits injected copies already visible under the same name in its native user or
+project roots. Selected Codex skills are sent as structured skill inputs with the
+path from Codex's active catalog, matched by catalog name or skill directory name,
+for both starting and steering a turn; a selected skill missing from that
+catalog is sent as plain text only.
 
 Top-level `sharedSkillRoots` in `~/.bb/config.json` adds one provider-neutral
 skill collection: `{"user": [...], "project": [...]}` relative paths, resolved
@@ -773,7 +800,7 @@ bb stores only the experiments you set; the others follow the shipped default.
 The `earlyAdopter` general setting (the Become an early adopter banner on
 Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
-(currently `timelinePush` and `compactExpiredCache`) turn on, and the rest stay
+(currently `timelinePush`, `compactExpiredCache`, and `sidebarMultiSelect`) turn on, and the rest stay
 off. An experiment you set yourself keeps your value either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
@@ -803,12 +830,34 @@ off. An experiment you set yourself keeps your value either way.
   collection. The experiment itself applies live; turning it off restores
   normal logging and flushes the in-flight profile, keeping saved files. See
   [diagnostics](debugging-and-qa.md#opt-in-server-performance-diagnostics).
+- `sidebarMultiSelect` (on for early adopters) lets the built-in thread list
+  select several threads: Cmd/Ctrl+Shift-click toggles a row (starting from the
+  open thread), Shift-click selects the visible range from the last clicked row,
+  and a plain click, Cmd/Ctrl-click, Escape, or a click outside the sidebar
+  clears the selection.
+  Right-clicking a selected row offers Mark read/unread, Pin/Unpin,
+  Notifications, Move to section, Archive (Unarchive when every selected
+  thread is archived), and Delete for the whole selection. Archive and Delete
+  ask once for the whole selection, counting child threads that are not
+  selected, and act on the topmost selected threads; Archive skips the
+  question when the Archive confirmation setting is off. Dragging a selected row moves
+  every selected thread onto a section, under a thread, or into Pinned, or drops
+  them onto a composer as one mention per thread. Cmd/Ctrl-click still opens a
+  thread in a split. Plugins read it with
+  `experimental_useExperiment("sidebarMultiSelect")`.
 - `timelinePush` makes an open thread view subscribe to its latest timeline
   window over the WebSocket (`thread-timeline` subscription target); the server
   pushes the full window once, then row deltas after new events, instead of the
   client refetching the latest window after every update. A missed push falls
   back to the delta request used when it is off. Open views follow a toggle
   live.
+- `unreadDividerAtAnswer` moves the NEW divider in an unread thread from the
+  first row after your read point to the answer of a turn that finished while
+  you were away: the turn's final assistant message, or the error that ended
+  it. The turn's tool calls and in-between notes stay above the divider. A
+  message that started a new turn keeps the divider above it, a turn that is
+  still running or has no answer keeps the old placement, and the divider never
+  lands on your own message. It applies the next time you open a thread.
 
 ## Thread Timeline Window
 
@@ -894,16 +943,17 @@ skills.
 
 ### Claude Code provider
 
-| Setting            | Default | Effect                                                                                                                                                                                                                                                                |
-| ------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `disable1MContext` | `false` | Sets `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` (`0` when off).                                                                                                                                                                                                               |
-| `chromeEnabled`    | `false` | Starts Claude Code with `--chrome` for Claude in Chrome tools, which bb otherwise leaves off even when the interactive `claude` CLI enables them; the host needs the extension and a claude.ai login (API-key sessions stay off).                                     |
-| `artifactsEnabled` | `false` | Sets `CLAUDE_CODE_ARTIFACT=1` so Claude Code loads its Artifact tools (read, publish, and edit claude.ai artifacts), which it withholds from SDK sessions by default; when off, bb leaves any inherited value alone. Claude may publish private pages without asking. |
-| `sandboxEnabled`   | `true`  | Runs Bash in Claude Code's sandbox in Accept Edits and Approve for me modes; `false` uses Claude Code's own approvals and sandbox settings.                                                                                                                           |
+| Setting                      | Default | Effect                                                                                                                                                                                                                                                                |
+| ---------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `disable1MContext`           | `false` | Sets `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` (`0` when off).                                                                                                                                                                                                               |
+| `chromeEnabled`              | `false` | Starts Claude Code with `--chrome` for Claude in Chrome tools, which bb otherwise leaves off even when the interactive `claude` CLI enables them; the host needs the extension and a claude.ai login (API-key sessions stay off).                                     |
+| `artifactsEnabled`           | `false` | Sets `CLAUDE_CODE_ARTIFACT=1` so Claude Code loads its Artifact tools (read, publish, and edit claude.ai artifacts), which it withholds from SDK sessions by default; when off, bb leaves any inherited value alone. Claude may publish private pages without asking. |
+| `sandboxEnabled`             | `true`  | Runs Bash in Claude Code's sandbox in Accept Edits and Approve for me modes; `false` uses Claude Code's own approvals and sandbox settings.                                                                                                                           |
+| `fullAccessApprovalsEnabled` | `false` | Shows Claude Code's own prompts in Full Access (`permissions.ask` rules, PreToolUse hooks that answer `ask`, and built-in safety checks); `false` approves every request. Applies from the next turn without a restart.                                               |
 
-Set them with `bb plugin config provider-claude-code set <key> <value>`. A
-change restarts the thread's Claude process before its next turn, keeping the
-conversation. Memory, native subagents, and the Workflow tool are toggled on
+Set them with `bb plugin config provider-claude-code set <key> <value>`. Unless
+noted, a change restarts the thread's Claude process before its next turn,
+keeping the conversation. Memory, native subagents, and the Workflow tool are toggled on
 the provider's page in Settings → Providers (see `bb guide providers`).
 
 Two host-daemon environment variables reach the Claude Code bridge:

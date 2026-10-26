@@ -1,6 +1,7 @@
 import { vi } from "vitest";
 
 interface FakeFlowLayoutOptions {
+  heightOf?: (element: Element) => number | null;
   scrollElement: HTMLElement | (() => HTMLElement | null);
   viewportHeight: number;
 }
@@ -31,6 +32,7 @@ export function setFakeHeight(element: Element, height: number): void {
 }
 
 export function installFakeFlowLayout({
+  heightOf,
   scrollElement: scrollElementOption,
   viewportHeight: initialViewportHeight,
 }: FakeFlowLayoutOptions) {
@@ -45,12 +47,14 @@ export function installFakeFlowLayout({
   const layout = () => {
     boxes.clear();
     const place = (element: Element, top: number): number => {
-      const own = element.getAttribute(HEIGHT_ATTRIBUTE);
+      const attribute = element.getAttribute(HEIGHT_ATTRIBUTE);
+      const own =
+        attribute !== null ? Number(attribute) : (heightOf?.(element) ?? null);
       const style = element instanceof HTMLElement ? element.style : null;
       const shift = element instanceof HTMLElement ? translateY(element) : 0;
       let height: number;
       if (own !== null) {
-        height = Number(own);
+        height = own;
         let childTop = top + shift;
         for (const child of element.children) {
           childTop += place(child, childTop);

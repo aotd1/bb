@@ -12,6 +12,7 @@ import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { killProcessesReferencingPath } from "@bb/test-helpers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStandaloneBuiltinCompactCommandInput } from "@bb/domain";
 import type { DynamicTool, ReasoningLevel } from "@bb/domain";
@@ -687,6 +688,7 @@ afterEach(async () => {
     threadStartRequests.clear();
     vi.unstubAllEnvs();
     output.restore();
+    await killProcessesReferencingPath(workspaceDir);
     rmSync(workspaceDir, { recursive: true, force: true });
   }
 }, 30_000);
@@ -752,6 +754,49 @@ describe("acp bridge", () => {
       selectedOnlyModels: [],
     });
   });
+
+  it.each([
+    { dialectId: "omp", routed: true },
+    { dialectId: "opencode", routed: true },
+    { dialectId: "acp", routed: false },
+  ])(
+    "lets the $dialectId dialect name each model's route provider",
+    async ({ dialectId, routed }) => {
+      const modelListId = sendModelList({
+        dialectId,
+        modelLines: [
+          "anthropic/claude-sonnet-5-5 - Claude Sonnet 5.5",
+          "openrouter/anthropic/claude-sonnet-5.5 - Claude Sonnet 5.5",
+          "openai/gpt-4.1 - openai/GPT-4.1",
+          "local - Local",
+        ].join("\n"),
+      });
+
+      const result = (await waitForResponse(modelListId)).result as {
+        models: { id: string; displayName: string; routeProviderId?: string }[];
+      };
+      expect(
+        result.models.map(({ displayName, routeProviderId }) => [
+          displayName,
+          routeProviderId,
+        ]),
+      ).toEqual(
+        routed
+          ? [
+              ["Claude Sonnet 5.5", "anthropic"],
+              ["Claude Sonnet 5.5", "openrouter"],
+              ["GPT-4.1", "openai"],
+              ["Local", undefined],
+            ]
+          : [
+              ["Claude Sonnet 5.5", undefined],
+              ["Claude Sonnet 5.5", undefined],
+              ["openai/GPT-4.1", undefined],
+              ["Local", undefined],
+            ],
+      );
+    },
+  );
 
   it("uses Cursor CLI variants as reasoning metadata for bare ACP models", async () => {
     const modelListId = sendModelList({
@@ -1344,7 +1389,6 @@ describe("acp bridge", () => {
   it.each([
     ["exits unsuccessfully", "process.exit(2)"],
     ["prints no models", "process.stdout.write('no model lines here')"],
-    ["times out", "setInterval(() => {}, 1000)"],
   ])(
     "fails model/list when the configured command %s without a cached catalog",
     async (_failure, script) => {
@@ -1352,18 +1396,45 @@ describe("acp bridge", () => {
         agent: { command: process.execPath, args: ["-e", script] },
         modelListArgs: ["--"],
       });
-      const response = await waitFor(
-        () => findResponse(failingId),
-        `response ${failingId}`,
-        40_000,
-      );
+      const response = await waitForResponse(failingId);
       expect(response.error?.message).toBe(
         "ACP model list command failed to provide a model catalog.",
       );
       expect(response.result).toBeUndefined();
     },
-    45_000,
   );
+
+  it("fails model/list when the configured command times out without a cached catalog", async () => {
+    const readyFile = join(workspaceDir, "model-list-ready.txt");
+    let failingId: number;
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      failingId = sendModelList({
+        agent: {
+          command: process.execPath,
+          args: [
+            "-e",
+            `require('node:fs').writeFileSync(${JSON.stringify(readyFile)}, String(process.pid)); setInterval(() => {}, 1000);`,
+          ],
+        },
+        modelListArgs: ["--"],
+      });
+      await waitForFileWithRealTimer(readyFile);
+      expect(findResponse(failingId)).toBeUndefined();
+    } finally {
+      await vi
+        .advanceTimersByTimeAsync(30_000)
+        .finally(() => vi.useRealTimers());
+    }
+
+    const response = await waitForResponse(failingId!);
+    expect(response.error?.message).toBe(
+      "ACP model list command failed to provide a model catalog.",
+    );
+    expect(response.result).toBeUndefined();
+    await waitForAgentExit(readyFile);
+  });
 
   it("keeps the last good CLI catalog when the same command later fails", async () => {
     const scriptPath = join(workspaceDir, "model-list.cjs");

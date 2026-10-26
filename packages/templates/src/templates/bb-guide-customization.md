@@ -183,9 +183,15 @@ connection as row deltas instead of reloading the latest window after each
 update. `compactExpiredCache` offers a Compact chip in the composer when an idle
 thread's prompt cache has expired and its context holds at least 100k tokens;
 see `bb guide thread-messaging` for `--compact-first`.
+`sidebarMultiSelect` lets the built-in thread list sidebar select several threads with
+Cmd/Ctrl+Shift-click and Shift-click for bulk actions and drag; Cmd/Ctrl-click
+still opens a thread in a split.
+`unreadDividerAtAnswer` places the NEW divider of an unread thread before the
+final assistant message of a turn that finished while you were away, instead of
+before its first tool call.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
-`timelinePush` and `compactExpiredCache`; an experiment you set yourself keeps
+`timelinePush`, `compactExpiredCache`, and `sidebarMultiSelect`; an experiment you set yourself keeps
 your value.
 
 Launcher settings
@@ -230,6 +236,10 @@ either way.
 in the current window, like the sidebar arrows. `thread.previous` /
 `thread.next` follow sidebar order instead: `Mod+Shift+[` / `Mod+Shift+]`
 on desktop and `Control+Shift+[` / `Control+Shift+]` on the web.
+
+`thread.rename`, `thread.archive`, `thread.markRead`, and `thread.pin` start
+unbound and act on the focused pane's open thread; Mark read and Pin toggle
+like the matching thread menu item.
 
 An override can be scoped with `--platform`; without it, it applies on all
 platforms. A platform-specific override takes precedence over a general one,

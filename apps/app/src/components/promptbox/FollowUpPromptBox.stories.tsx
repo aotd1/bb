@@ -7,7 +7,6 @@ import type {
   PromptMentionResource,
   PromptTextMention,
   ThreadQueuedMessage,
-  WorkspaceStatus,
 } from "@bb/domain";
 import { makeThreadQueuedMessage } from "@bb/test-helpers/domain-fixtures";
 import {
@@ -66,6 +65,7 @@ import type {
 import { PageShell } from "@/components/ui/page-shell.js";
 import { promptDraftToInput, type PromptDraftState } from "@bb/client-core";
 import { queuedInputToDraft } from "@bb/client-core";
+import type { WorkspaceStatus } from "bb-plugin-bb--git/contract";
 
 export default {
   title: "promptbox/Follow Up Prompt Box",
@@ -418,51 +418,66 @@ const dirtyContextBannerSection =
 
 const contextBannerElement: ReactNode = dirtyContextBannerSection ? (
   <ThreadPromptContextBanner
+    input={{
+      threadId: "thr_story",
+      projectId: "proj_story",
+      environment: null,
+    }}
+    core={{
+      git: {
+        changedFiles: dirtyContextBannerSection,
+        mergeBase: {
+          branch: "main",
+          options: ["main", "develop", "release/2026-05"],
+          onChange: noop,
+        },
+        onPromptBannerFileClick: noop,
+      },
+      gitPending: false,
+      parentThread: null,
+    }}
     archivedSection={null}
     environmentGoneSection={null}
-    gitSection={{
-      changedFiles: dirtyContextBannerSection,
-      mergeBase: {
-        branch: "main",
-        options: ["main", "develop", "release/2026-05"],
-        onChange: noop,
-      },
-      onPromptBannerFileClick: noop,
-    }}
-    gitSectionPending={false}
-    parentThreadSection={null}
-    childThreadsSection={null}
-    pullRequestSection={null}
-    expandedSection={null}
-    onToggleSection={noop}
+    expandedSegment={null}
+    onToggleSegment={noop}
   />
 ) : null;
 
 const archivedContextBannerElement: ReactNode = (
   <ThreadPromptContextBanner
+    input={{
+      threadId: "thr_story",
+      projectId: "proj_story",
+      environment: null,
+    }}
+    core={{
+      git: null,
+      gitPending: false,
+      parentThread: null,
+    }}
     archivedSection={{ archivedAt: 1_731_456_000_000 }}
     environmentGoneSection={null}
-    gitSection={null}
-    gitSectionPending={false}
-    parentThreadSection={null}
-    childThreadsSection={null}
-    pullRequestSection={null}
-    expandedSection={null}
-    onToggleSection={noop}
+    expandedSegment={null}
+    onToggleSegment={noop}
   />
 );
 
 const environmentGoneContextBannerElement: ReactNode = (
   <ThreadPromptContextBanner
+    input={{
+      threadId: "thr_story",
+      projectId: "proj_story",
+      environment: null,
+    }}
+    core={{
+      git: null,
+      gitPending: false,
+      parentThread: null,
+    }}
     archivedSection={null}
     environmentGoneSection={{ status: "destroyed" }}
-    gitSection={null}
-    gitSectionPending={false}
-    parentThreadSection={null}
-    childThreadsSection={null}
-    pullRequestSection={null}
-    expandedSection={null}
-    onToggleSection={noop}
+    expandedSegment={null}
+    onToggleSegment={noop}
   />
 );
 

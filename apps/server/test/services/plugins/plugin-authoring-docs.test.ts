@@ -36,6 +36,7 @@ import {
   type PluginSidebarFooterActionProps,
   type PluginSourceCodeRendererProps,
   type PluginThreadHeaderActionProps,
+  type ExperimentalThreadContextSegmentProps,
   type ExperimentalThreadInfoProps,
   type PluginThreadActionItemInput,
   type ExperimentalPluginBrowserToolbarActionProps,
@@ -156,7 +157,11 @@ const PUBLIC_PLUGIN_SDK_EXPORT_NAMES = [
       join(REPO_ROOT, "packages/plugin-sdk/bundled-types", filename),
       "utf8",
     ),
-  ).filter((name) => !name.startsWith("InternalDoNotUse")),
+  ).filter(
+    (name) =>
+      !name.startsWith("InternalDoNotUse") &&
+      !name.startsWith("internal_DO_NOT_USE_"),
+  ),
 );
 
 const BB_PLUGIN_API_KEYS = [
@@ -280,6 +285,7 @@ type SlotPropsByName = {
   experimental_threadList: PluginThreadListProps;
   experimental_sidebarNavigation: ExperimentalSidebarNavigationProps;
   experimental_threadHeaderAction: PluginThreadHeaderActionProps;
+  experimental_threadContextSegment: ExperimentalThreadContextSegmentProps;
   experimental_threadInfoRow: ExperimentalThreadInfoProps;
   experimental_threadInfoSection: ExperimentalThreadInfoProps;
   experimental_threadAction: PluginThreadActionItemInput<unknown>;
@@ -373,8 +379,16 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "projectId",
     "isCompactViewport",
   ],
-  experimental_threadInfoRow: ["threadId", "projectId"],
-  experimental_threadInfoSection: ["threadId", "projectId"],
+  experimental_threadContextSegment: [
+    "threadId",
+    "projectId",
+    "environment",
+    "segments",
+    "isExpanded",
+    "onToggle",
+  ],
+  experimental_threadInfoRow: ["threadId", "projectId", "environment"],
+  experimental_threadInfoSection: ["threadId", "projectId", "environment"],
   experimental_threadAction: ["thread", "data", "sdk", "navigate"],
   experimental_browserToolbarAction: [
     "threadId",

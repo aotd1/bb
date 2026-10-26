@@ -5,7 +5,9 @@ export const experimentKeys = [
   "compactExpiredCache",
   "serverMove",
   "performanceDiagnostics",
+  "sidebarMultiSelect",
   "timelinePush",
+  "unreadDividerAtAnswer",
 ] as const;
 export const experimentKeySchema = z.enum(experimentKeys);
 export type ExperimentKey = z.infer<typeof experimentKeySchema>;
@@ -24,7 +26,9 @@ export const defaultExperiments: Experiments = {
   compactExpiredCache: false,
   serverMove: false,
   performanceDiagnostics: false,
+  sidebarMultiSelect: false,
   timelinePush: false,
+  unreadDividerAtAnswer: false,
 };
 
 export const earlyAdopterExperiments: Experiments = {
@@ -32,5 +36,7 @@ export const earlyAdopterExperiments: Experiments = {
   compactExpiredCache: true,
   serverMove: false,
   performanceDiagnostics: false,
+  sidebarMultiSelect: true,
   timelinePush: true,
+  unreadDividerAtAnswer: false,
 };

@@ -58,6 +58,8 @@ import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
 
 const PARENT_SYSTEM_MESSAGE_SOURCE = "tell";
 
+class ParentSystemMessageStateChangedError extends Error {}
+
 export interface ParentSystemMessageTaxonomy {
   systemMessageKind: SystemMessageKind;
   systemMessageSubject: SystemMessageSubject | null;
@@ -228,11 +230,13 @@ function queueActiveParentSystemMessageInTransaction(
   if (
     !currentThread ||
     currentThread.environmentId !== args.environment.id ||
-    currentThread.status !== "active" ||
     currentThread.archivedAt !== null ||
     currentThread.deletedAt !== null
   ) {
     return null;
+  }
+  if (currentThread.status !== "active") {
+    throw new ParentSystemMessageStateChangedError();
   }
 
   const expectedSteerTurnId = getActiveTurnId({ db: tx }, args.thread.id);
@@ -383,7 +387,17 @@ async function queueReadyParentSystemMessage(
   });
   const activeThread: Thread | null = deps.db.transaction(
     (tx) => {
-      ensureThreadCanStartRequest(args.thread);
+      const currentThread = getThread(tx, args.thread.id);
+      if (
+        !currentThread ||
+        currentThread.environmentId !== args.environment.id ||
+        currentThread.status !== args.thread.status ||
+        currentThread.archivedAt !== null ||
+        currentThread.deletedAt !== null
+      ) {
+        throw new ParentSystemMessageStateChangedError();
+      }
+      ensureThreadCanStartRequest(currentThread);
       appendPreparedClientTurnRequestedEventWithNotificationInTransaction(tx, {
         ...parentSystemTurnRequestFields(args),
         target: { kind: "new-turn" },
@@ -533,6 +547,32 @@ export async function deliverParentSystemMessage(
 }
 
 async function deliverParentSystemMessageWithContextGuard(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: DeliverParentSystemMessageArgs,
+): Promise<boolean> {
+  while (true) {
+    const parentThread = getThread(deps.db, args.parentThread.id);
+    if (
+      !parentThread ||
+      parentThread.archivedAt !== null ||
+      parentThread.deletedAt !== null
+    ) {
+      return false;
+    }
+    try {
+      return await attemptParentSystemMessageDelivery(deps, {
+        ...args,
+        parentThread,
+      });
+    } catch (error) {
+      if (!(error instanceof ParentSystemMessageStateChangedError)) {
+        throw error;
+      }
+    }
+  }
+}
+
+async function attemptParentSystemMessageDelivery(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: DeliverParentSystemMessageArgs,
 ): Promise<boolean> {
